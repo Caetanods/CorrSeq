@@ -20,12 +20,14 @@ fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds =
     root.type <- match.arg(root.type, choices=c("madfitz","equal"), several.ok=FALSE)
 
     ## Make a function to call the nloptr function.
-    wrapLogLik <- function(x, phy, data.list, nstates, nsites, root.type){
+    wrapLogLik <- function(logx, phy, data.list, nstates, nsites, root.type){
         ## x is a vector of parameters.
         ## length of x is equal to the number of sites.
+        ## Search will be in log-space.
         ## phy = phylogeny
         ## data = data matrix.
         ## nstates = number of states in each of the sites in the data.
+        x <- exp(logx) ## Transform back to evaluate the likelihood.
         Q <- list()
         for( i in 1:nsites){
             Q[[i]] <- matrix(x[i], nrow=nstates, ncol=nstates)
@@ -43,8 +45,13 @@ fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds =
     ## Create the vectors for the upper and lower bound for nloptr.
     ## The bound is the same for each of the sites.
     if( bounds[1] < 0 ) stop( "The lower bound cannot be negative." )
-    lb <- rep(bounds[1], times = nsites)
-    ub <- rep(bounds[2], times = nsites)
+    ## Log the bounds in order to search in log space.
+    if( bounds[1] == 0 ){
+        ## Cannot be log(0)
+        bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
+    }
+    log_lb <- log( rep(bounds[1], times = nsites) )
+    log_ub <- log( rep(bounds[2], times = nsites) )
     
     ## Sample the initial parameters for the search.
     ## Here the user can provide a custom start.
@@ -55,6 +62,8 @@ fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds =
         if( !length(init) == nsites ) stop(" Length of 'init' needs to be the same as the length of the sequence." )
         init.pars <- init
     }
+    ## Log the initial value to search in log-space.
+    init.pars <- log( init.pars )
         
     ## Get the number of states. At the moment all the sites need to have the same number of states.
     ## No state can be missing in the tips.
@@ -74,24 +83,27 @@ fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds =
     }
 
     print( "Starting global MLE search. (First pass)" )
-    global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=lb, ub=ub, opts=global.opts
+    global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
                    , phy=phy, data.list=data.list, nstates=st.count[1], root.type=root.type
                    , nsites=nsites)
     print( "Global search solution:" )
-    print( paste("Log-lik:", -global$objective, "Pars:", global$solution, sep=" ") )
+    print( paste("Log-lik:", -global$objective, "Pars:", exp(global$solution), sep=" ") )
     print( "Starting local MLE search. (Second pass)" )
-    fit <- nloptr(x0=global$solution, eval_f=wrapLogLik, lb=lb, ub=ub, opts=local.opts
+    fit <- nloptr(x0=global$solution, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
                 , phy=phy, data.list=data.list, nstates=st.count[1], root.type=root.type
                 , nsites=nsites)
     print( "Finished." )
 
+    ## Note that the parameters for the model returned will be in log.
+    normal.solution <- exp( fit$solution )
+
     ## Construct the matrices again to return.
     Q.res <- list()
     for( i in 1:nsites) {
-        Q.res[[i]] <- matrix(fit$solution[i], nrow=st.count[1], ncol=st.count[1])
-        diag(Q.res[[i]]) <- -(colSums(Q.res[[i]]) - fit$solution[i])
+        Q.res[[i]] <- matrix(normal.solution[i], nrow=st.count[1], ncol=st.count[1])
+        diag(Q.res[[i]]) <- -(colSums(Q.res[[i]]) - normal.solution[i])
     }
     ## Here 'res' is a list with each of the Q matrices. The length of the list is equal to the number of sites in the data.
-    out <- list( log.lik=-fit$objective, Q=Q.res, start.par=init.pars, nlopt.opts=fit$options, nlopt.message=fit$message )
+    out <- list( log.lik=-fit$objective, Q=Q.res, start.par=exp(init.pars), nlopt.opts=fit$options, nlopt.message=fit$message )
     return( out )
 }
