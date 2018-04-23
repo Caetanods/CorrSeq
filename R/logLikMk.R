@@ -60,14 +60,16 @@ logLikMk <- function(phy, X, Q, root.type){
                   if(root.type == "equal"){
                       equal.pi <- rep(1, times = ncol(Q)) / ncol(Q)
                       vv <- Reduce('*',v)[,1] * equal.pi
-                      ## vv <- Reduce('*',v)[,1] / ncol(Q)
                       comp[anc] <- sum(vv)
                   }
-                  if(root.type == "madfitz"){
-                      ## Here we will integrate over all the possible roots.
-                      ## This is similar to the restricted likelihood in Felsenstein.
-                      vv <- Reduce('*',v)[,1]
-                      comp[anc] <- sum( sapply(1:length(vv), function(x) x*(x/sum(vv))) )
+            if(root.type == "madfitz"){
+                ## Implement the Maddison and Fitzjohn method.
+                      vv.temp <- Reduce('*',v)[,1] ## The probability not yet scaled by the roots.
+                      comp.anc <- sum(vv.temp)
+                      liks.root <- vv.temp / comp.anc
+                      root.p <- liks.root / sum(liks.root)
+                      vv <- vv.temp * root.p ## Now we can scale the probability.
+                      comp[anc] <- sum(vv)
                   }
               } else{
                   vv <- Reduce('*',v)[,1]
