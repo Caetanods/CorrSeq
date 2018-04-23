@@ -1,0 +1,10 @@
+Package: seqtraits
+Title: Phylogenetic Comparative Methods to Study Sequence Traits
+Version: 0.0.0.9000
+Authors@R: person("Daniel", "Caetano", email = "caetanods1@gmail.com", role = c("aut", "cre"))
+Description: Tools for sequence trait data and methods to analyse trait evolution for sequence ordered data.
+Depends: R (>= 3.4.4)
+License: MIT
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 6.0.1

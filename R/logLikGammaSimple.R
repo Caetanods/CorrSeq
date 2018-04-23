@@ -1,0 +1,48 @@
+##' The log-likelihood function for using the Gamma distribution.
+##'
+##' Computes the log-likelihood for the model.
+##' @title Log-likelihood for the markov model using a Gamma-distributed rate heterogeneity.
+##' @param phy 
+##' @param X 
+##' @param Q 
+##' @param root.type 
+##' @param beta 
+##' @param k 
+##' @param n.cores 
+##' @param it 
+##' @return The log-likelihood for the model.
+##' @author daniel
+##' @noRd
+loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores, it){
+    ## phy = phylo
+    ## X = data frame with number of columns equal to the number of traits and rownames equal to the species names in the phylogeny.
+    ## Q = transition matrix among the states. Here we use a global transition matrix, meaning that all the traits have the same number of states.
+    ## pi = data frame with the probabilities at the root for each of the states for each of the traits.
+    ## beta = the shape parameter for the Gamma distribution used to model among site rate variation.
+    ## k = the parameter for the number of rate categories.
+    ## This function assumes that all sites have the same number of states. This is our simplest case.
+    
+    Xlist <- lapply(1:ncol(X), function(x) make.data.tips(setNames(X[,x], rownames(X))) )
+    ## For each site we need to sum the probabilities with the Q scale by the r factor from the gamma distribution.
+    ## scale = beta and shape = alpha -> Comparing between the function and Yang papers.
+    ## Here we follow Yang, 1993 and set beta = alpha, such that the mean of the distribution is equal to 1.
+    gamma.rates <- discreteGamma(shape = beta, ncats = k)
+    ## Need to protect if any of the rates has 0 value.
+    ## Rate of 0 will set the likelihood to 0. So we can just skip it.
+    gamma.rates <- gamma.rates[!gamma.rates == 0]
+    gamma.lik <- parallel::mclapply(1:length(Xlist), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=Xlist[[site]], Q=r*Q, root.type=root.type ) )
+                                  , mc.cores = n.cores )
+    ## We can use 'gamma.lik' to get the averaged transition matrix for the site.
+    rel.lik <- lapply(1:length(Xlist), function(x) gamma.lik[[x]] / sum( gamma.lik[[x]] ) )
+    real.Q <- lapply(1:length(Xlist), function(x) sum(rel.lik[[x]] * gamma.rates) * Q )
+    final.lik <- sum( sapply(1:length(Xlist), function(x) log( sum( exp( gamma.lik[[x]] ) ) / k ) ) )
+    
+    ## A crappy wrap to catch cases in which the likelihood is just bad.
+    ## This is because of bad proposals. Need to improve this.
+    if( is.na( final.lik ) ){
+        print( paste("Bad proposal! Rejecting ", it, sep="") )
+        print( paste(c(c(Q[1,2]), beta), collapse="; ") )
+        final.lik <- log(0)
+    }
+    return( list(final.lik, real.Q) )
+}
