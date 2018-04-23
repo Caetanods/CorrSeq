@@ -4,7 +4,7 @@
 \alias{runMCMCFreeModel}
 \title{A simple MCMC sampler for the model.}
 \usage{
-runMCMCFreeModel(phy, data, root.type = "equal", gen, unif.prior = c(0,
+runMCMCFreeModel(phy, data, root.type = "equal", gen, unif.prior = c(1e-05,
   100), init = NULL)
 }
 \arguments{
