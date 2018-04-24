@@ -5,7 +5,7 @@
 \title{Find the maximum likelihood for the model with the gamma function.}
 \usage{
 fitMLGammaModel(data, phy, root.type = "madfitz", ncat = 4, bounds = c(0,
-  100), opts = NULL, n.cores = 1)
+  100), opts = NULL, init = NULL, verbose = TRUE, n.cores = 1)
 }
 \arguments{
 \item{data}{matrix with species names as rownames.}
@@ -19,6 +19,10 @@ fitMLGammaModel(data, phy, root.type = "madfitz", ncat = 4, bounds = c(0,
 \item{bounds}{}
 
 \item{opts}{the list of options for nloptr. If null it will use the default parameters.}
+
+\item{init}{}
+
+\item{verbose}{}
 
 \item{n.cores}{}
 
