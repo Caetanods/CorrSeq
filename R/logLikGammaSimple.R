@@ -33,7 +33,9 @@ loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores, it){
     gamma.lik <- parallel::mclapply(1:length(Xlist), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=Xlist[[site]], Q=r*Q, root.type=root.type ) )
                                   , mc.cores = n.cores )
     ## We can use 'gamma.lik' to get the averaged transition matrix for the site.
-    rel.lik <- lapply(1:length(Xlist), function(x) gamma.lik[[x]] / sum( gamma.lik[[x]] ) )
+    ## rel.lik <- lapply(1:length(Xlist), function(x) exp(gamma.lik[[x]]) / sum( exp(gamma.lik[[x]]) ) )
+    ## Using AICw to compute the relative likelihood:
+    rel.lik <- lapply(1:length(Xlist), function(x) exp(-0.5*(-2*gamma.lik[[x]])) / sum( exp(-0.5*(-2*gamma.lik[[x]]) ) ) )
     real.Q <- lapply(1:length(Xlist), function(x) sum(rel.lik[[x]] * gamma.rates) * Q )
     final.lik <- sum( sapply(1:length(Xlist), function(x) log( sum( exp( gamma.lik[[x]] ) ) / k ) ) )
     
@@ -44,5 +46,6 @@ loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores, it){
         print( paste(c(c(Q[1,2]), beta), collapse="; ") )
         final.lik <- log(0)
     }
-    return( list(final.lik, real.Q) )
+    ## Returns the loglik, the estimated Q per site and the relative likelihood for each of the rate categories on the site.
+    return( list(final.lik, real.Q, rel.lik) )
 }
