@@ -3,6 +3,7 @@
 export(fitMLFreeModel)
 export(fitMLGammaModel)
 export(getLogLikMk)
+export(getRootMarginal)
 export(readMCMC)
 export(runMCMCFreeModel)
 export(runMCMCSimple)
