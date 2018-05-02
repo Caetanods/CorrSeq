@@ -16,31 +16,54 @@
 fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds = c(0,100), opts = NULL, n.cores = 1){
     ## This model does not use a function to model rate variation. This is a joint estimate for every site.
     ## This is the most complex model we can use here.
-    
+    ## Update the function to take an alignment. This will size the Q matrix for each site depending on the
+    ##     number of different elements in the site.
+    ## ( Need to be extended to accept sites with multiple states - to account for uncertainty. )
+
+    ## Check argument choice.
     root.type <- match.arg(root.type, choices=c("madfitz","equal"), several.ok=FALSE)
+    ## Check phylogeny and data:
+    if( is.null( rownames(data) ) ) stop("data need to have rownames as the species names.")
+    match.names <- all( rownames(data) %in% phy$tip.label ) & all( phy$tip.label %in% rownames(data) )
+    if( !match.names ) stop("Some species do not match between data and phylogeny!")
+
+    ## Make data checks and get information from the matrix.
+    nsites <- ncol(data)
+    nstates <- apply(data, 2, function(x) length( unique(x) ) )
+    names.data <- rownames(data)
+    ## Translate states to numeric, but keep the labels safe.
+    states.key <- lapply(1:nsites, function(x)
+        cbind( unique(data[,x]), 1:length(unique(data[,x])) )
+        )
+    for(i in 1:nsites){
+        for(j in 1:length(states.key[[i]][,1])){
+            id <- data[,i] == states.key[[i]][,1][j]
+            data[id,i] <- as.numeric( states.key[[i]][,2] )[j]
+        }
+    }
+    ## Because R is mega dumb:
+    data <- apply(as.matrix(data), 2, as.numeric)
+    rownames(data) <- names.data
+    ## Now we have a data matrix with numbers.
+
+    ## Elements in this data.list can have a different number of columns.
+    data.list <- lapply(1:nsites, function(x) make.data.tips.numeric(setNames(as.numeric(data[,x]), rownames(data))) )
 
     ## Make a function to call the nloptr function.
-    wrapLogLik <- function(logx, phy, data.list, nstates, nsites, root.type){
+    wrapLogLik <- function(logx, phy, data.list, nsites, nstates, root.type){
         ## x is a vector of parameters.
         ## length of x is equal to the number of sites.
         ## Search will be in log-space.
-        ## phy = phylogeny
-        ## data = data matrix.
-        ## nstates = number of states in each of the sites in the data.
         x <- exp(logx) ## Transform back to evaluate the likelihood.
         Q <- list()
         for( i in 1:nsites){
-            Q[[i]] <- matrix(x[i], nrow=nstates, ncol=nstates)
+            Q[[i]] <- matrix(x[i], nrow=nstates[i], ncol=nstates[i])
             diag(Q[[i]]) <- -(colSums(Q[[i]]) - x[i])
         }
         lik.site <- sapply(1:nsites, function(x) logLikMk(phy=phy, X=data.list[[x]], Q=Q[[x]], root.type))
         lik <- sum(lik.site)
         return( -lik ) ## Remember that NLOPT is minimizying the function!
     }
-
-    ## Create a list of data with length equal to the number of sites.
-    nsites <- ncol(data)
-    data.list <- lapply(1:nsites, function(x) make.data.tips(setNames(as.numeric(data[,x]), rownames(data))) )
 
     ## Create the vectors for the upper and lower bound for nloptr.
     ## The bound is the same for each of the sites.
@@ -67,8 +90,9 @@ fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds =
         
     ## Get the number of states. At the moment all the sites need to have the same number of states.
     ## No state can be missing in the tips.
-    st.count <- apply(data, 2, function(x) length( unique(x) ) )
-    if( any( !st.count == st.count[1] ) ) stop( "Some of the sites has a different number of elements." )
+    ## Cannot check this anymore. This should work even if this is true.
+    ## st.count <- apply(data, 2, function(x) length( unique(x) ) )
+    ## if( any( !st.count == st.count[1] ) ) stop( "Some of the sites has a different number of elements." )
     ## Create the list of options for local search of nloptr:
     if( is.null(opts) ){
         ## nlopt.opts <- list(algorithm="NLOPT_LN_SBPLX", "ftol_rel"=1e-08, "maxtime"=170000000, "maxeval"=10000)
@@ -84,13 +108,13 @@ fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds =
 
     print( "Starting global MLE search. (First pass)" )
     global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
-                   , phy=phy, data.list=data.list, nstates=st.count[1], root.type=root.type
+                   , phy=phy, data.list=data.list, nstates=nstates, root.type=root.type
                    , nsites=nsites)
     print( "Global search solution:" )
     print( paste("Log-lik:", -global$objective, "Pars:", exp(global$solution), sep=" ") )
     print( "Starting local MLE search. (Second pass)" )
     fit <- nloptr(x0=global$solution, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
-                , phy=phy, data.list=data.list, nstates=st.count[1], root.type=root.type
+                , phy=phy, data.list=data.list, nstates=nstates, root.type=root.type
                 , nsites=nsites)
     print( "Finished." )
 
