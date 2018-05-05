@@ -34,6 +34,10 @@ fitMLGammaModel <- function(data, phy, root.type = "madfitz", ncat = 4, bounds =
         which.invar <- apply(data, 2, function(x) length(unique(x)) == 1)
         data <- data[,!which.invar]
     }
+
+    ## Re-order the species in the data matrix to match the tree:
+    data.order <- match(x=phy$tip.label, table=rownames(data))
+    data <- data[data.order,]
     
     ## Make data checks and get information from the matrix.
     nsites <- ncol(data)

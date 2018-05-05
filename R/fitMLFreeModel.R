@@ -46,6 +46,10 @@ fitMLFreeModel <- function(data, phy, init=NULL, root.type = "madfitz", bounds =
     rownames(data) <- names.data
     ## Now we have a data matrix with numbers.
 
+    ## Re-order the species in the data matrix to match the tree:
+    data.order <- match(x=phy$tip.label, table=rownames(data))
+    data <- data[data.order,]
+    
     ## Elements in this data.list can have a different number of columns.
     data.list <- lapply(1:nsites, function(x) make.data.tips.numeric(setNames(as.numeric(data[,x]), rownames(data))) )
 
