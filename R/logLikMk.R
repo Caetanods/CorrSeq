@@ -9,10 +9,11 @@ make.data.tips <- function(X){
     return( X.mat )
 }
 
-make.data.tips.numeric <- function(X){
+make.data.tips.numeric <- function(X, Q){
     ## Function to correct the format of the data to pass to the likelihood.
     ## Same as the other. But assumes the elements are a sequence of numbers.
-    states <- 1:length(unique(X))
+    ## states <- 1:length(unique(X))
+    states <- 1:ncol(Q)
     X.mat <- sapply(states, function(y) as.numeric(X == y) )
     rownames(X.mat) <- names(X)
     colnames(X.mat) <- states

@@ -2,6 +2,7 @@
 
 export(fitMLFreeModel)
 export(fitMLGammaModel)
+export(fitMLGammaSpanSpace)
 export(getLogLikMk)
 export(getRootMarginal)
 export(readMCMC)

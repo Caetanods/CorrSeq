@@ -21,8 +21,9 @@ loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores, it){
     ## beta = the shape parameter for the Gamma distribution used to model among site rate variation.
     ## k = the parameter for the number of rate categories.
     ## This function assumes that all sites have the same number of states. This is our simplest case.
-    
-    Xlist <- lapply(1:ncol(X), function(x) make.data.tips.numeric(setNames(X[,x], rownames(X))) )
+
+    ## This line now uses the dimensions of Q to set the data. So we can control the state space of the estimation.
+    Xlist <- lapply(1:ncol(X), function(x) make.data.tips.numeric(X=setNames(X[,x], rownames(X)), Q=Q[[x]]) )
     ## For each site we need to sum the probabilities with the Q scale by the r factor from the gamma distribution.
     ## scale = beta and shape = alpha -> Comparing between the function and Yang papers.
     ## Here we follow Yang, 1993 and set beta = alpha, such that the mean of the distribution is equal to 1.
