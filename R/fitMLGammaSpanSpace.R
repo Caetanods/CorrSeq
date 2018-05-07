@@ -19,7 +19,7 @@
 ##' @importFrom nloptr nloptr
 ##' @export
 ##' @author daniel
-fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", ncat = 4, bounds = c(0,100), state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
+fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = c(0,100), state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
     ## At the moment the model assumes that all transitions have the same rate.
     ## So just a single rate is estimated for each of the transition matrices. Of course, this rate is changed by the gamma distribution.
     ## This is a fork of the original function.
@@ -28,23 +28,39 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     
     root.type <- match.arg(root.type, choices=c("madfitz","equal"), several.ok=FALSE)
     model <- match.arg(model, choices=c("ER","DEL"), several.ok=FALSE)
-    
+    if( !is.logical(add.invar) ) stop("Argument 'add.invar' need to TRUE or FALSE.")
+
+    ## Check the poly.key argument.
+    if( !is.null(poly.key) ){
+        if( is.list(poly.key) ){
+            poly.states <- names(poly.key)
+            if( !all( poly.states %in% c(data) ) ) stop( "Name(s) of 'poly.key' not present in data." )
+        } else{
+            stop( "Argument 'poly.key' needs to be NULL or a named list. See 'Details'." )
+        }
+    }
+        
     ## Check phylogeny and data:
     ## Consider adding step to organize the species names in the data following the phy names.
     if( is.null( rownames(data) ) ) stop("data need to have rownames as the species names.")
     match.names <- all( rownames(data) %in% phy$tip.label ) & all( phy$tip.label %in% rownames(data) )
     if( !match.names ) stop("Secies names do not match between data and phylogeny!")
 
+    ## If the model = "DEL" then the data need to show at least 1 instance of the gap.char:
+    if( model == "DEL" & !any(c(data) == gap.char) ) stop( "Chosen model include 'gaps' but symbol in 'gap.char' not found in the data. Change 'gap.char' or chose other model option." )
+    
     ## Re-order the species in the data matrix to match the tree:
     data.order <- match(x=phy$tip.label, table=rownames(data))
     data <- data[data.order,]
 
-    ## Check for invariant sites. Mark these, avoid estimation.
-    has.invar <- any( apply(data, 2, function(x) length(unique(x)) == 1) )
-    if( has.invar ){
-        print("Data contain invariant positions. Returning 'invariant' as the transition matrix for these positions.")
-        which.invar <- apply(data, 2, function(x) length(unique(x)) == 1)
-        data <- data[,!which.invar]
+    if( !add.invar ){
+        ## Check for invariant sites. Mark these, avoid estimation.
+        has.invar <- any( apply(data, 2, function(x) length(unique(x)) == 1) )
+        if( has.invar ){
+            print("Data contain invariant positions. Returning 'invariant' as the transition matrix for these positions.")
+            which.invar <- apply(data, 2, function(x) length(unique(x)) == 1)
+            data <- data[,!which.invar]
+        }
     }
     
     ## Make data checks and get information from the matrix.
@@ -56,10 +72,12 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     
     ## Translate states to numeric, but keep the labels safe.
     ## If the model is "DEL" then I need to code states such that '-' is always the first state.
-    states.key <- list()
+    states.key <- list() ## The key for the state names.
+    gap.key <- rep(FALSE, times=nsites) ## The key for sites with gaps.
     for(i in 1:nsites){
         site.div <- unique(data[,i])
         is.gap <- site.div == gap.char ## The symbol for a gap.
+        gap.key[i] <- any(is.gap)
         order.site.div <- c(site.div[is.gap], site.div[!is.gap])
         states.key[[i]] <- cbind(order.site.div, 1:length(order.site.div))
         ## Translate to numeric following the key:
@@ -94,7 +112,7 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         ## Not any of above, then return error.
         stop("state.space needs to be 'max.div', 'obs.div' or a single number.")
     }
-
+        
     ## Likelihood function will depend on the model now:
     if( model == "ER" ){        
         make.Q.list <- function(rate, size){
@@ -102,12 +120,13 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
             diag(Q) <- -(colSums(Q) - rate)
             return(Q)
         }    
-        wrapLogLikGammaSimple <- function(obj, phy, data, nstates, k, root.type){
+        wrapLogLikGammaSimple <- function(obj, phy, data, nstates, k, root.type, gap.key){
             ## obj is a vector of 2 parameters.
             ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta.
             ## phy = phylogeny
             ## data = data matrix.
             ## nstates = number of states in each of the sites in the data (now this is a vector).
+            ## gap.key is ignored in this case.
             x <- exp(obj[1])
             beta <- obj[2]
             ## Will need to be a list.
@@ -118,16 +137,18 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         }
     }
     if( model == "DEL" ){
-        make.Q.list.DEL <- function(global.rate, del.rate, size){
+        make.Q.list.DEL <- function(global.rate, del.rate, size, is.gap){
             ## The '-' state is always the first state in the matrix.
             Q <- matrix(global.rate, nrow=size, ncol=size)
             ## The separate transition is the Q[2+,1] and Q[1,2+]
-            Q[1,] <- del.rate
-            Q[,1] <- del.rate
+            if( is.gap ){
+                Q[1,] <- del.rate
+                Q[,1] <- del.rate
+            }
             diag(Q) <- sapply(1:size, function(x) -(sum(Q[x,]) - Q[x,x]))
             return(Q)
-        }    
-        wrapLogLikGammaSimple <- function(obj, phy, data, nstates, k, root.type){
+        }
+        wrapLogLikGammaSimple <- function(obj, phy, data, nstates, k, root.type, gap.key){
             ## obj is a vector of 3 parameters.
             ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2].
             ## obj[3] = the beta rate (for the Gamma function).
@@ -138,7 +159,9 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
             x.del <- exp(obj[2])
             beta <- obj[3]
             ## Will need to be a list.
-            Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i) )
+            Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
+                                                           , is.gap=gap.key[i])
+                        )
             ## Loglik function for the model.
             lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k
                                    , it=1, n.cores=n.cores)[[1]]
@@ -198,14 +221,14 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     if( verbose ){
         print( "Starting global MLE search. (First pass)" )
         global <- nloptr(x0=init.pars, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=global.opts
-                       , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type)
+                       , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         print( "Global search finished." )
         ## print( paste("Log-lik ", -global$objective
         ##            , "; rate ", exp(global$solution[1])
         ##            , "; alpha ", global$solution[2], collapse="") )
         print( "Starting local MLE search. (Second pass)" )
         fit <- nloptr(x0=global$solution, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=local.opts
-                    , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type)
+                    , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         print( "Local search solution:" )
         ## print( paste("Log-lik ", -fit$objective
         ##            , "; rate ", exp(fit$solution[1])
@@ -213,9 +236,9 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         print( "Reconstructing site-wise Q matrices." )
     } else{
         global <- nloptr(x0=init.pars, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=global.opts
-                       , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type)
+                       , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         fit <- nloptr(x0=global$solution, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=local.opts
-                    , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type)
+                    , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
     }
     ## Register finish search time.
     finish.time <- Sys.time()
@@ -232,7 +255,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     }
     if( model == "DEL"){
         solution <- c(exp(fit$solution[1]), exp(fit$solution[2]), fit$solution[3])
-        Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=solution[1], del.rate=solution[2], size=i) )
+        Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=solution[1], del.rate=solution[2]
+                                                       , size=i, is.gap=gap.key[i]) )
         beta <- solution[3]
         res <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
     }
@@ -243,25 +267,27 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
             colnames(res[[i]]) <- states.key[[i]][,1]
         } else{ ## Need to append to names.
             dif.len <- nstates[i] - length(states.key[[i]][,1])
-            append.name <- paste("state.", LETTERS[1:dif.len], sep="")
+            append.name <- paste("extra.", LETTERS[1:dif.len], sep="")
             rownames(res[[i]]) <- c(states.key[[i]][,1], append.name)
             colnames(res[[i]]) <- c(states.key[[i]][,1], append.name)
         }
     }
     ## Before returning the list we need to include a flag for the invariant site positions.
-    if( has.invar ){
-        res.complete <- list()
-        complete.length <- length(which.invar) ## The original size of the data matrix.
-        count <- 1 ## A counter for the loop.
-        for(i in 1:complete.length){
-            if(which.invar[i]){ ## If invariant site.
-                res.complete[[i]] <- "invariant"
-            }else{
-                res.complete[[i]] <- res[[count]]
-                count <- count + 1
+    if( !add.invar ){
+        if( has.invar ){
+            res.complete <- list()
+            complete.length <- length(which.invar) ## The original size of the data matrix.
+            count <- 1 ## A counter for the loop.
+            for(i in 1:complete.length){
+                if(which.invar[i]){ ## If invariant site.
+                    res.complete[[i]] <- "invariant"
+                }else{
+                    res.complete[[i]] <- res[[count]]
+                    count <- count + 1
+                }
             }
+            res <- res.complete
         }
-        res <- res.complete
     }
     
     ## Here 'res' is a list with each of the Q matrices. The length of the list is equal to the number of sites in the data.
