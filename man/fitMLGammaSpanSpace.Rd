@@ -4,14 +4,16 @@
 \alias{fitMLGammaSpanSpace}
 \title{Find the maximum likelihood for the model with the gamma function.}
 \usage{
-fitMLGammaSpanSpace(data, phy, root.type = "madfitz", ncat = 4,
-  bounds = c(0, 100), state.space = "max.div", opts = NULL, init = NULL,
-  verbose = TRUE, n.cores = 1)
+fitMLGammaSpanSpace(data, phy, model = "ER", root.type = "madfitz",
+  ncat = 4, bounds = c(0, 100), state.space = "max.div", gap.char = "-",
+  opts = NULL, init = NULL, verbose = TRUE, n.cores = 1)
 }
 \arguments{
 \item{data}{matrix with species names as rownames.}
 
 \item{phy}{phylogeny}
+
+\item{model}{Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).}
 
 \item{root.type}{one of "madfitz", or "equal". Need to extend to accept a observed vector of probabilities.}
 
@@ -19,7 +21,9 @@ fitMLGammaSpanSpace(data, phy, root.type = "madfitz", ncat = 4,
 
 \item{bounds}{}
 
-\item{state.space}{can be "max.div", "site.div" or a numeric. The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.}
+\item{state.space}{can be "max.div", "site.div" or a numeric (length of 1 or equal to the number of columns in the data). The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.}
+
+\item{gap.char}{the character identified as the gap in the data. Default: "-"}
 
 \item{opts}{the list of options for nloptr. If null it will use the default parameters.}
 
