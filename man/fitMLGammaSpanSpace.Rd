@@ -18,6 +18,10 @@ fitMLGammaSpanSpace(data, phy, model = "ER", root.type = "madfitz",
 
 \item{root.type}{one of "madfitz", or "equal". Need to extend to accept a observed vector of probabilities.}
 
+\item{add.invar}{TRUE or FALSE. Whether to compute transition rates for the invariant sites or not.}
+
+\item{poly.key}{a named list. Each element is a vector with the states represented by the polymorphism symbol. Names of the list need to match the polymorphism symbols in the data.}
+
 \item{ncat}{categories for the gamma function}
 
 \item{bounds}{}

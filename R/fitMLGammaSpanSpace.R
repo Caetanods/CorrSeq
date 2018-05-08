@@ -6,6 +6,8 @@
 ##' @param phy phylogeny
 ##' @param model Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).
 ##' @param root.type one of "madfitz", or "equal". Need to extend to accept a observed vector of probabilities.
+##' @param add.invar TRUE or FALSE. Whether to compute transition rates for the invariant sites or not.
+##' @param poly.key a named list. Each element is a vector with the states represented by the polymorphism symbol. Names of the list need to match the polymorphism symbols in the data.
 ##' @param ncat categories for the gamma function
 ##' @param bounds 
 ##' @param state.space can be "max.div", "site.div" or a numeric (length of 1 or equal to the number of columns in the data). The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.
@@ -47,7 +49,7 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     if( !match.names ) stop("Secies names do not match between data and phylogeny!")
 
     ## If the model = "DEL" then the data need to show at least 1 instance of the gap.char:
-    if( model == "DEL" & !any(c(data) == gap.char) ) stop( "Chosen model include 'gaps' but symbol in 'gap.char' not found in the data. Change 'gap.char' or chose other model option." )
+    if( model == "DEL" & !any(c(data) == gap.char) ) stop( "Chosen model assumes 'gaps' but symbol in 'gap.char' not found in the data. Change 'gap.char' or chose other model option." )
     
     ## Re-order the species in the data matrix to match the tree:
     data.order <- match(x=phy$tip.label, table=rownames(data))
@@ -67,31 +69,44 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     nsites <- ncol(data)
     names.data <- rownames(data)
 
-    ## nstates is a vector with the sizes of the observed states.
-    nstates <- apply(data, 2, function(x) length( unique(x) ) )
-    
-    ## Translate states to numeric, but keep the labels safe.
     ## If the model is "DEL" then I need to code states such that '-' is always the first state.
-    states.key <- list() ## The key for the state names.
-    gap.key <- rep(FALSE, times=nsites) ## The key for sites with gaps.
+    nstates <- rep(0, times=nsites) ## Number of observed states in each site.
+    gap.key <- rep(FALSE, times=nsites) ## The key for sites with gaps
+    Xlist <- list() ## The list of matrices to use in the likelihood.
+    
     for(i in 1:nsites){
         site.div <- unique(data[,i])
+        if( !is.null(poly.key) ){
+            is.poly <- site.div %in% names(poly.key) ## The symbol(s) for polymorphism.
+            site.poly <- site.div[is.poly] ## The poly symbols in this site.
+            site.div <- site.div[!is.poly] ## The site diversity without polymorphism.
+        }
         is.gap <- site.div == gap.char ## The symbol for a gap.
         gap.key[i] <- any(is.gap)
         order.site.div <- c(site.div[is.gap], site.div[!is.gap])
-        states.key[[i]] <- cbind(order.site.div, 1:length(order.site.div))
-        ## Translate to numeric following the key:
-        for(j in 1:length(states.key[[i]][,1])){
-            id <- data[,i] == states.key[[i]][,1][j]
-            data[id,i] <- as.numeric( states.key[[i]][,2] )[j]
+        nstates[i] <- length( order.site.div )
+        ## Don't need to translate states to numbers. Can work with the symbols.
+        site.mat <- matrix(0, ncol = length(order.site.div), nrow = nrow(data))
+        if( !is.null(poly.key) ){ ## Need to check for polymorphic states.
+            for(j in 1:length(data[,i])){
+                if( data[j,i] %in% names(poly.key) ){
+                    poly.set <- poly.key[[ names(poly.key) == data[j,i] ]]
+                    site.mat[j,] <- as.numeric(order.site.div %in% poly.set) ## Set 1 for all states present in this site.
+                } else{
+                    site.mat[j,] <- as.numeric( order.site.div == data[j,i] )
+                }
+            }
+        } else{ ## Don't have polymorphic states.
+            for(j in 1:length(data[,i])){
+                site.mat[j,] <- as.numeric( order.site.div == data[j,i] )
+            }
         }
+        colnames( site.mat ) <- order.site.div
+        rownames( site.mat ) <- rownames( data )
+        Xlist[[i]] <- site.mat
     }
 
-    ## Because R is mega dumb. Need to make sure that the table is really numeric.
-    data <- apply(as.matrix(data), 2, as.numeric)
-    rownames(data) <- names.data
-
-    ## Expand the state space for each of the sites following the argument choice.
+    ## Compute the expanded state space for each of the sites given function arguments.
     if( is.character(state.space) ){
         state.space <- match.arg(state.space, choices = c("max.div", "site.div"))
         if(state.space == "max.div"){
@@ -112,14 +127,27 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         ## Not any of above, then return error.
         stop("state.space needs to be 'max.div', 'obs.div' or a single number.")
     }
-        
+
+    ## Fix the dimension of the data matrices given the state space.
+    for( i in 1:nsites ){
+        obs.state.space <- ncol( Xlist[[i]] )
+        add.state.space <- nstates[i] - obs.state.space ## Can be 0 or positive.
+        if( add.state.space == 0 ) next
+        mat.add.state <- matrix(0, nrow = nrow(Xlist[[i]]), ncol=add.state.space)
+        rownames(mat.add.state) <- rownames( Xlist[[i]] )
+        tmp.Xlist <- cbind(Xlist[[i]], mat.add.state) ## Temporary copy of the matrix.
+        append.col.name <- paste("extra.", LETTERS[1:add.state.space], sep="")
+        colnames( tmp.Xlist ) <- c( colnames( Xlist[[i]] ), append.col.name )
+        Xlist[[i]] <- tmp.Xlist
+    }
+
     ## Likelihood function will depend on the model now:
     if( model == "ER" ){        
         make.Q.list <- function(rate, size){
             Q <- matrix(rate, nrow=size, ncol=size)
             diag(Q) <- -(colSums(Q) - rate)
             return(Q)
-        }    
+        }
         wrapLogLikGammaSimple <- function(obj, phy, data, nstates, k, root.type, gap.key){
             ## obj is a vector of 2 parameters.
             ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta.
@@ -221,14 +249,14 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     if( verbose ){
         print( "Starting global MLE search. (First pass)" )
         global <- nloptr(x0=init.pars, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=global.opts
-                       , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
+                       , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         print( "Global search finished." )
         ## print( paste("Log-lik ", -global$objective
         ##            , "; rate ", exp(global$solution[1])
         ##            , "; alpha ", global$solution[2], collapse="") )
         print( "Starting local MLE search. (Second pass)" )
         fit <- nloptr(x0=global$solution, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=local.opts
-                    , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
+                    , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         print( "Local search solution:" )
         ## print( paste("Log-lik ", -fit$objective
         ##            , "; rate ", exp(fit$solution[1])
@@ -236,9 +264,9 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         print( "Reconstructing site-wise Q matrices." )
     } else{
         global <- nloptr(x0=init.pars, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=global.opts
-                       , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
+                       , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         fit <- nloptr(x0=global$solution, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=local.opts
-                    , phy=phy, data=data, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
+                    , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
     }
     ## Register finish search time.
     finish.time <- Sys.time()
@@ -251,27 +279,16 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         solution <- c(exp(fit$solution[1]), fit$solution[2])
         Q <- lapply(nstates, function(i) make.Q.list(rate=solution[1], size=i) )
         beta <- solution[2]
-        res <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
+        res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
     }
     if( model == "DEL"){
         solution <- c(exp(fit$solution[1]), exp(fit$solution[2]), fit$solution[3])
         Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=solution[1], del.rate=solution[2]
                                                        , size=i, is.gap=gap.key[i]) )
         beta <- solution[3]
-        res <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
+        res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
     }
-    ## Paste the state names on the Q matrices.
-    for( i in 1:nsites ){
-        if(nstates[i] == length(states.key[[i]][,1])){ ## Do not need to append to names.
-            rownames(res[[i]]) <- states.key[[i]][,1]
-            colnames(res[[i]]) <- states.key[[i]][,1]
-        } else{ ## Need to append to names.
-            dif.len <- nstates[i] - length(states.key[[i]][,1])
-            append.name <- paste("extra.", LETTERS[1:dif.len], sep="")
-            rownames(res[[i]]) <- c(states.key[[i]][,1], append.name)
-            colnames(res[[i]]) <- c(states.key[[i]][,1], append.name)
-        }
-    }
+    
     ## Before returning the list we need to include a flag for the invariant site positions.
     if( !add.invar ){
         if( has.invar ){
@@ -289,8 +306,14 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
             res <- res.complete
         }
     }
-    
-    ## Here 'res' is a list with each of the Q matrices. The length of the list is equal to the number of sites in the data.
+
+    ## Here 'res' is a list with each of the Q matrices.
+    ## Paste the state names on the Q matrices.
+    for( i in 1:nsites ){
+        rownames(res[[i]]) <- colnames(Xlist[[i]])
+        colnames(res[[i]]) <- colnames(Xlist[[i]])
+    }
+
     ## Some parameters of the model depend on the choice of model estimate.
     del.rate <- NULL
     start.par <- c(exp(init.pars[1]),init.pars[2])
