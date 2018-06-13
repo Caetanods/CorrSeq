@@ -234,7 +234,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     ## Create the list of options for local search of nloptr:
     if( is.null(opts) ){
         ## nlopt.opts <- list(algorithm="NLOPT_LN_SBPLX", "ftol_rel"=1e-08, "maxtime"=170000000, "maxeval"=10000)
-        global.opts <- list("algorithm"="NLOPT_GN_DIRECT", "maxeval"=1000000, "ftol_rel"=.Machine$double.eps^0.5)
+        ## Increasing the tolerance of the Global search here because it is going to be followed by a local search.
+        global.opts <- list("algorithm"="NLOPT_GN_DIRECT", "maxeval"=10000, "ftol_rel"=.Machine$double.eps^0.5*100)
         local.opts <- list("algorithm"="NLOPT_LN_SBPLX", "maxeval"=1000000, "ftol_rel"=.Machine$double.eps^0.5)
     } else{
         if( !is.list(opts) ) stop( "The argument 'opts' needs to be a list format" )
