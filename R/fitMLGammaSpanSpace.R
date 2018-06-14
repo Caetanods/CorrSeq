@@ -63,8 +63,11 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
             which.invar <- apply(data, 2, function(x) length(unique(x)) == 1)
             data <- data[,!which.invar]
         }
+    } else{
+        ## Create 'has.invar' as FALSE.
+        has.invar <- FALSE
     }
-    
+        
     ## Make data checks and get information from the matrix.
     nsites <- ncol(data)
     names.data <- rownames(data)
@@ -235,7 +238,7 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     if( is.null(opts) ){
         ## nlopt.opts <- list(algorithm="NLOPT_LN_SBPLX", "ftol_rel"=1e-08, "maxtime"=170000000, "maxeval"=10000)
         ## Increasing the tolerance of the Global search here because it is going to be followed by a local search.
-        global.opts <- list("algorithm"="NLOPT_GN_DIRECT", "maxeval"=10000, "ftol_rel"=.Machine$double.eps^0.5*100)
+        global.opts <- list("algorithm"="NLOPT_GN_DIRECT", "maxeval"=100000, "ftol_rel"=0.00001)
         local.opts <- list("algorithm"="NLOPT_LN_SBPLX", "maxeval"=1000000, "ftol_rel"=.Machine$double.eps^0.5)
     } else{
         if( !is.list(opts) ) stop( "The argument 'opts' needs to be a list format" )
@@ -289,10 +292,15 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         beta <- solution[3]
         res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
     }
+
+    ## Add the state names for the Q matrices.
+    for( i in 1:nsites ){
+        rownames(res[[i]]) <- colnames(Xlist[[i]])
+        colnames(res[[i]]) <- colnames(Xlist[[i]])
+    }
     
     ## Before returning the list we need to include a flag for the invariant site positions.
-    if( !add.invar ){
-        if( has.invar ){
+    if( !add.invar & has.invar ){
             res.complete <- list()
             complete.length <- length(which.invar) ## The original size of the data matrix.
             count <- 1 ## A counter for the loop.
@@ -305,14 +313,6 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
                 }
             }
             res <- res.complete
-        }
-    }
-
-    ## Here 'res' is a list with each of the Q matrices.
-    ## Paste the state names on the Q matrices.
-    for( i in 1:nsites ){
-        rownames(res[[i]]) <- colnames(Xlist[[i]])
-        colnames(res[[i]]) <- colnames(Xlist[[i]])
     }
 
     ## Some parameters of the model depend on the choice of model estimate.
