@@ -5,6 +5,7 @@
 ##' @param data matrix with species names as rownames.
 ##' @param phy phylogeny
 ##' @param model Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).
+##' @param auto.correlated Whether to use the auto-correlated discrete Gamma model from Yang 1995.
 ##' @param root.type one of "madfitz", or "equal". Need to extend to accept a observed vector of probabilities.
 ##' @param add.invar TRUE or FALSE. Whether to compute transition rates for the invariant sites or not.
 ##' @param poly.key a named list. Each element is a vector with the states represented by the polymorphism symbol. Names of the list need to match the polymorphism symbols in the data.
@@ -19,9 +20,10 @@
 ##' @param bonds a numeric vector with the lower and upper bonds for the rates
 ##' @return A list with the log-likelihood, initial parameters and the parameter values.
 ##' @importFrom nloptr nloptr
+##' @importFrom expm expm
 ##' @export
 ##' @author daniel
-fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = c(0,100), state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
+fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE, root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = c(0,100), state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
     ## At the moment the model assumes that all transitions have the same rate.
     ## So just a single rate is estimated for each of the transition matrices. Of course, this rate is changed by the gamma distribution.
     ## This is a fork of the original function.
@@ -151,20 +153,48 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
             diag(Q) <- -(colSums(Q) - rate)
             return(Q)
         }
-        wrapLogLikGammaSimple <- function(obj, phy, data, nstates, k, root.type, gap.key){
-            ## obj is a vector of 2 parameters.
-            ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta.
-            ## phy = phylogeny
-            ## data = data matrix.
-            ## nstates = number of states in each of the sites in the data (now this is a vector).
-            ## gap.key is ignored in this case.
-            x <- exp(obj[1])
-            beta <- obj[2]
-            ## Will need to be a list.
-            Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
-            ## Loglik function for the model.
-            lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k, it=1, n.cores=n.cores)[[1]]
-            return( -lik ) ## Remember that NLOPT is minimizying the function!
+        ## Check if the model is the autocorrelated:
+        if( auto.correlated ){
+            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+                ## obj is a vector of variable length.
+                ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta, obj[3:n] = the elements of the M matrix (for the autocorrelation).
+                ## phy = phylogeny
+                ## data = data matrix.
+                ## nstates = number of states in each of the sites in the data (now this is a vector).
+                ## gap.key is ignored in this case.
+                x <- exp(obj[1])
+                beta <- obj[2]
+                ## Will need to be a list.
+                Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
+                ## The M matrix for the autocorrelation:
+                ## We estimate the transition matrix.
+                M <- matrix(0, ncol = k, nrow = k)
+                upp.id <- upper.tri(M)
+                M[upp.id] <- exp(obj[3:(sum(upp.id)+2)])
+                M <- M + t(M)
+                diag(M) <- - colSums(M)
+                ## But we use the probability matrix:
+                M <- expm(M, method = "Ward77")
+                ## Loglik function for the model.
+                lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
+                return( -lik ) ## Remember that NLOPT is minimizying the function!
+            }
+        } else{
+            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+                ## obj is a vector of 2 parameters.
+                ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta.
+                ## phy = phylogeny
+                ## data = data matrix.
+                ## nstates = number of states in each of the sites in the data (now this is a vector).
+                ## gap.key is ignored in this case.
+                x <- exp(obj[1])
+                beta <- obj[2]
+                ## Will need to be a list.
+                Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
+                ## Loglik function for the model.
+                lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k, it=1, n.cores=n.cores)[[1]]
+                return( -lik ) ## Remember that NLOPT is minimizying the function!
+            }
         }
     }
     if( model == "DEL" ){
@@ -179,24 +209,56 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
             diag(Q) <- sapply(1:size, function(x) -(sum(Q[x,]) - Q[x,x]))
             return(Q)
         }
-        wrapLogLikGammaSimple <- function(obj, phy, data, nstates, k, root.type, gap.key){
-            ## obj is a vector of 3 parameters.
-            ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2].
-            ## obj[3] = the beta rate (for the Gamma function).
-            ## phy = phylogeny
-            ## data = data matrix.
-            ## nstates = number of states in each of the sites in the data (now this is a vector).
-            x.obs <- exp(obj[1])
-            x.del <- exp(obj[2])
-            beta <- obj[3]
-            ## Will need to be a list.
-            Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
-                                                           , is.gap=gap.key[i])
-                        )
-            ## Loglik function for the model.
-            lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k
-                                   , it=1, n.cores=n.cores)[[1]]
-            return( -lik ) ## Remember that NLOPT is minimizying the function!
+                ## Check if the model is the autocorrelated:
+        if( auto.correlated ){
+            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+                ## obj is a vector of 3 parameters.
+                ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2]
+                ## obj[3] = the beta rate (for the Gamma function).
+                ## obj[4:n] = the elements of the M matrix (for the autocorrelation).
+                ## phy = phylogeny
+                ## data = data matrix.
+                ## nstates = number of states in each of the sites in the data (now this is a vector).
+                x.obs <- exp(obj[1])
+                x.del <- exp(obj[2])
+                beta <- obj[3]
+                ## Will need to be a list.
+                Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
+                                                               , is.gap=gap.key[i])
+                            )
+                ## The M matrix for the autocorrelation:
+                ## We estimate the transition matrix.
+                M <- matrix(0, ncol = k, nrow = k)
+                upp.id <- upper.tri(M)
+                M[upp.id] <- exp(obj[4:(sum(upp.id)+3)])
+                M <- M + t(M)
+                diag(M) <- - colSums(M)
+                ## But we use the probability matrix:
+                M <- expm(M, method = "Ward77")
+                ## Loglik function for the model.
+                lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
+                return( -lik ) ## Remember that NLOPT is minimizying the function!
+            }
+        } else{
+            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+                ## obj is a vector of 3 parameters.
+                ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2].
+                ## obj[3] = the beta rate (for the Gamma function).
+                ## phy = phylogeny
+                ## data = data matrix.
+                ## nstates = number of states in each of the sites in the data (now this is a vector).
+                x.obs <- exp(obj[1])
+                x.del <- exp(obj[2])
+                beta <- obj[3]
+                ## Will need to be a list.
+                Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
+                                                               , is.gap=gap.key[i])
+                            )
+                ## Loglik function for the model.
+                lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k
+                                       , it=1, n.cores=n.cores)[[1]]
+                return( -lik ) ## Remember that NLOPT is minimizying the function!
+            }
         }
     }
     
@@ -211,27 +273,45 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
     }
     ## Make nlopt bounds vectors.
-    log_lb <- c( log( bounds[1] ), 0 )
-    log_ub <- c( log( bounds[2] ), maxBeta )
+    if( auto.correlated ){
+        M.vec.size <- sum( upper.tri( diag(k) ) )
+        log_lb <- c( log( bounds[1] ), 0, rep(log(bounds[1]), times=M.vec.size) )
+        log_ub <- c( log( bounds[2] ), maxBeta, rep(log(bounds[2]), times=M.vec.size) )
+    } else{
+        log_lb <- c( log( bounds[1] ), 0 )
+        log_ub <- c( log( bounds[2] ), maxBeta )
+    }
 
     ## Sample the initial parameters for the search.
     ## Here the user can provide a custom start.
     if( is.null(init) ){
-        init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
-                       , runif(1, min=0, max=maxBeta  ) )
+        if( auto.correlated ){
+            init.pars <- c( log(runif(1, min=bounds[1], max=bounds[2]))
+                         , runif(1, min=0, max=maxBeta)
+                         , log(runif(M.vec.size, min=bounds[1], max=bounds[2])) )
+        } else{
+            init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
+                         , runif(1, min=0, max=maxBeta) )
+        }
     } else{
-        if( !length( init ) == 2 ) stop("Length of init need to be 2. init[1] is for the rate and init[2] is for the Gamma function parameter (beta).")
-        if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
-        if( any(init[2] < 0) | any(init[2] > maxBeta) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = 0 and max = ", maxBeta,".") )
-        init.pars <- c(log(init[1]), init[2])
+        if( auto.correlated ){
+            if( !length( init ) == M.vec.size+2 ) stop("Wrong number of init parameters.")
+        } else{
+            if( !length( init ) == 2 ) stop("Length of init need to be 2. init[1] is for the rate and init[2] is for the Gamma function parameter (beta).")
+            if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
+            if( any(init[2] < 0) | any(init[2] > maxBeta) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = 0 and max = ", maxBeta,".") )
+            init.pars <- c(log(init[1]), init[2])
+        }
     }
 
     ## The "DEL" model has one more parameter.
     ## Need to adjust the length of init and bounds parameters.
     if( model == "DEL" ){
         init.pars <- c(init.pars[1], init.pars[1], init.pars[2])
-        log_lb <- c( log( bounds[1] ), log( bounds[1] ), 0 )
-        log_ub <- c( log( bounds[2] ), log( bounds[2] ), maxBeta )
+        log_lb <- c( log( bounds[1] ), log( bounds[1] ), 0
+                  , log(rep(bounds[1], times=M.vec.size)) )
+        log_ub <- c( log( bounds[2] ), log( bounds[2] ), maxBeta
+                  , log(rep(bounds[2], times=M.vec.size)) )
     }    
 
     ## Create the list of options for local search of nloptr:
@@ -252,14 +332,14 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
     start.time <- Sys.time()
     if( verbose ){
         print( "Starting global MLE search. (First pass)" )
-        global <- nloptr(x0=init.pars, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=global.opts
+        global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
                        , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         print( "Global search finished." )
         ## print( paste("Log-lik ", -global$objective
         ##            , "; rate ", exp(global$solution[1])
         ##            , "; alpha ", global$solution[2], collapse="") )
         print( "Starting local MLE search. (Second pass)" )
-        fit <- nloptr(x0=global$solution, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=local.opts
+        fit <- nloptr(x0=global$solution, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
                     , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
         print( "Local search solution:" )
         ## print( paste("Log-lik ", -fit$objective
@@ -267,9 +347,9 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
         ##            , "; alpha ", fit$solution[2], collapse="") )
         print( "Reconstructing site-wise Q matrices." )
     } else{
-        global <- nloptr(x0=init.pars, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=global.opts
+        global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
                        , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
-        fit <- nloptr(x0=global$solution, eval_f=wrapLogLikGammaSimple, lb=log_lb, ub=log_ub, opts=local.opts
+        fit <- nloptr(x0=global$solution, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
                     , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
     }
     ## Register finish search time.
@@ -330,4 +410,3 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", root.type = "madfitz", 
               , nlopt.message=fit$message, search.time=total.time, model=model)
     return( out )
 }
-
