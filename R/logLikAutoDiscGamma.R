@@ -1,3 +1,33 @@
+getLastUnit <- function(gamma.lik, M, i, k, n){
+    ## This function computes a minimum independent unit in the recursive algorithm.
+    ## gamma.lik: the list of the site likelihoods.
+    ## M: the probability matrix.
+    ## i: the rate category of the n-1 neighbor site.
+    ## n: the current site.
+    return( logSumExp( sapply(1:k, function(j) log(M[i,j]) + gamma.lik[[n]][j] ) ) )
+}
+
+getIntUnit <- function(gamma.lik, M, i, k, n, left_unit){
+    ## This function computes a minimum independent unit given the unit for the site on the left.
+    ## gamma.lik: the list of the site likelihoods.
+    ## M: the probability matrix.
+    ## i: the rate category of the n-1 neighbor site.
+    ## n: the current site.
+    ## left_unit: the unit computed for the site on the left.
+    return( logSumExp( sapply(1:k, function(j) log(M[i,j]) + gamma.lik[[n]][j] + left_unit[j] ) ) )
+}
+
+## And so on, until the first site:
+getFirstUnit <- function(gamma.lik, k, second_unit){
+    ## This function computes the final lik sum, given the accumulated lik across the sites.
+    ## It is used only once, but it helps to read the code.
+    ## gamma.lik: the list of the site likelihoods.
+    ## second_unit: the unit computed for the site on the left.
+    ## The probability of each rate category is the same here.
+    ## Following Yang 1995 parameterization of the Gamma distribution.
+    return( logSumExp( sapply(1:k, function(j) log(1/k) + gamma.lik[[1]][j] + second_unit[j] ) ) )
+}
+
 ##' The log-likelihood function for using the auto-discrete-Gamma distribution.
 ##'
 ##' Computes the log-likelihood for the model using the auto-discrete-Gamma distribution of rates among sites as described by Yang 1995.
@@ -23,53 +53,21 @@ logLikAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores){
 
     ## Here the rates are autocorrelated among the sites using the method proposed by Yang (1995).
 
-    ## Here there is no filter for Gamma rates <= 0.
-    ## Need to make sure that rates make sense when computing the likelihood for the model.
+    ## These rates CANNOT contain zero. If they are 0, then break and return error.
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
+    if( any(gamma.rates == 0) ) stop("Rates scalers cannot contain 0 when the model is auto-correlated.")
 
     ## This computes the likelihood for the sites given all the rate categories.
-    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) )
-                                  , mc.cores = n.cores )
-
-    ## Define function to compute unit in the recursive code.
-    getLastUnit <- function(gamma.lik, M, i, k, n){
-        ## This function computes a minimum independent unit in the recursive algorithm.
-        ## gamma.lik: the list of the site likelihoods.
-        ## M: the probability matrix.
-        ## i: the rate category of the n-1 neighbor site.
-        ## n: the current site.
-        return( log( sum( sapply(1:k, function(j) M[i,j] * exp( gamma.lik[[n]][j] ) ) ) ) )
-    }
+    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) ), mc.cores = n.cores )
 
     ## Store number of sites
     nsites <- length(X)
     N_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites)) ## Last site.
 
-    getIntUnit <- function(gamma.lik, M, i, k, n, left_unit){
-        ## This function computes a minimum independent unit given the unit for the site on the left.
-        ## gamma.lik: the list of the site likelihoods.
-        ## M: the probability matrix.
-        ## i: the rate category of the n-1 neighbor site.
-        ## n: the current site.
-        ## left_unit: the unit computed for the site on the left.
-        return( log( sum( sapply(1:k, function(j) M[i,j] * exp( gamma.lik[[n]][j] ) * exp(left_unit[j]) ) ) ) )
-    }
-
     lik_unit <- N_unit ## Start the loop.
     for( site in (nsites-1):2){ ## Next to last up to the second site.
         ## Loop will compute the cumulative probabilites across the sites using the recursive algorithm.
         lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
-    }
-
-    ## And so on, until the first site:
-    getFirstUnit <- function(gamma.lik, k, second_unit){
-        ## This function computes the final lik sum, given the accumulated lik across the sites.
-        ## It is used only once, but it helps to read the code.
-        ## gamma.lik: the list of the site likelihoods.
-        ## second_unit: the unit computed for the site on the left.
-        ## The probability of each rate category is the same here.
-        ## Following Yang 1995 parameterization of the Gamma distribution.
-        return( log( sum( sapply(1:k, function(j) 1/k * exp( gamma.lik[[1]][j] ) * exp(second_unit[j]) ) ) ) )
     }
 
     ## The final sum is the likelihood for the model.    
@@ -79,7 +77,6 @@ logLikAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores){
     ## This is because of bad proposals. Need to improve this.
     if( is.na( final_lik ) ){
         print( "Bad proposal! Rejecting." )
-        print( paste(c(c(Q[1,2]), beta), collapse="; ") )
         final_lik <- log(0)
     }
 
