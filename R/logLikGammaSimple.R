@@ -9,11 +9,10 @@
 ##' @param beta 
 ##' @param k 
 ##' @param n.cores 
-##' @param it 
 ##' @return The log-likelihood for the model.
 ##' @author daniel
 ##' @noRd
-loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores, it){
+loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores){
     ## phy = phylo
     ## X = data frame with number of columns equal to the number of traits and rownames equal to the species names in the phylogeny.
     ## Q = transition matrix among the states. Here we use a global transition matrix, meaning that all the traits have the same number of states.
@@ -44,10 +43,10 @@ loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores, it){
     ## A crappy wrap to catch cases in which the likelihood is just bad.
     ## This is because of bad proposals. Need to improve this.
     if( is.na( final.lik ) ){
-        print( paste("Bad proposal! Rejecting ", it, sep="") )
-        print( paste(c(c(Q[1,2]), beta), collapse="; ") )
+        print("Bad proposal! Rejecting")
         final.lik <- log(0)
     }
+
     ## Returns the loglik, the estimated Q per site and the relative likelihood for each of the rate categories on the site.
-    return( list(final.lik, real.Q, rel.lik) )
+    return( list(log.lik=final.lik, Q=real.Q, rel.lik=rel.lik) )
 }
