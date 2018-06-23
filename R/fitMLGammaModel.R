@@ -80,8 +80,9 @@ fitMLGammaModel <- function(data, phy, root.type = "madfitz", ncat = 4, bounds =
         return( -lik ) ## Remember that NLOPT is minimizying the function!
     }
 
-    ## We can find the maximum 'practical' value for beta conditioned in the number of categories. Beta values larger than this will not change the rate multiplier.
-    maxBeta <- findMaxBeta(ncat)
+    ## Need to find the upper and lower bound for the Gamma distribution that do not produce 0 rates.
+    beta.bounds <- findMaxBeta(ncat)
+    
     ## Create the vectors for the upper and lower bound for nloptr.
     ## The bound is the same for each of the sites.
     if( bounds[1] < 0 ) stop( "The lower bound cannot be negative." )
@@ -91,18 +92,18 @@ fitMLGammaModel <- function(data, phy, root.type = "madfitz", ncat = 4, bounds =
         bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
     }
     ## Make nlopt bounds vectors.
-    log_lb <- c( log( bounds[1] ), 0 )
-    log_ub <- c( log( bounds[2] ), maxBeta )
+    log_lb <- c( log( bounds[1] ), beta.bounds[1] )
+    log_ub <- c( log( bounds[2] ), beta.bounds[2] )
 
     ## Sample the initial parameters for the search.
     ## Here the user can provide a custom start.
     if( is.null(init) ){
         init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
-                       , runif(1, min=0, max=maxBeta  ) )
+                       , runif(1, min=beta.bounds[1], max=beta.bounds[2]  ) )
     } else{
         if( !length( init ) == 2 ) stop("Length of init need to be 2. init[1] is for the rate and init[2] is for the Gamma function parameter (beta).")
         if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
-        if( any(init[2] < 0) | any(init[2] > maxBeta) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = 0 and max = ", maxBeta,".") )
+        if( any(init[2] < beta.bounds[1]) | any(init[2] > beta.bounds[2]) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
         init.pars <- c(log(init[1]), init[2])
     }
 
