@@ -6,8 +6,8 @@
 \usage{
 fitMLGammaSpanSpace(data, phy, model = "ER", auto.correlated = FALSE,
   root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4,
-  bounds = c(0, 100), state.space = "max.div", gap.char = "-",
-  opts = NULL, init = NULL, verbose = TRUE, n.cores = 1)
+  bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL,
+  init = NULL, verbose = TRUE, n.cores = 1)
 }
 \arguments{
 \item{data}{matrix with species names as rownames.}
