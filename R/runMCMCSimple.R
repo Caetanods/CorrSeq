@@ -16,6 +16,8 @@ runMCMCSimple <- function(phy, data, k=4, gen, Q.max=100, beta.max="estimated"){
     nstates <- length(unique(data[,1]))
 
     ## Get the maximum value for beta:
+    ## IMPORTANT: 'findMaxBeta' returns both the minimum and maximum for the beta parameter.
+    stop( "Sorry Daniel, I am affraid you will need to fix this first." )
     if( beta.max == "estimated" ){
         beta.max <- findMaxBeta(ncats=k)
         print( paste("Max shape for Gamma is ", beta.max, sep="") )
