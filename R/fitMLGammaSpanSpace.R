@@ -23,7 +23,7 @@
 ##' @importFrom expm expm
 ##' @export
 ##' @author daniel
-fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE, root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = c(0,100), state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
+fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE, root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
     ## At the moment the model assumes that all transitions have the same rate.
     ## So just a single rate is estimated for each of the transition matrices. Of course, this rate is changed by the gamma distribution.
     ## This is a fork of the original function.
@@ -52,6 +52,25 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
 
     ## If the model = "DEL" then the data need to show at least 1 instance of the gap.char:
     if( model == "DEL" & !any(c(data) == gap.char) ) stop( "Chosen model assumes 'gaps' but symbol in 'gap.char' not found in the data. Change 'gap.char' or chose other model option." )
+
+    ## Check if the 'bounds' argument has the correct format:
+    if( !is.null( bounds ) ){
+        if( auto.correlated ){
+            if( !is.matrix( bounds ) ) stop( "Wrong format for 'bounds' when using 'auto.correlated' model." )
+            if( !ncol( bounds ) == 2 | !nrow( bounds ) == 2 ) stop( "Wrong format for 'bounds' when using 'auto.correlated' model." )
+            if( any( bounds[,2] - bounds[,1] <= 0 ) ) stop( "Wrong format for 'bounds' when using 'auto.correlated' model." )
+        } else{
+            if( !length( bounds ) == 2) stop( "Wrong format for the 'bounds' argument." )
+            if( bounds[1] < 0 ) stop( "The lower bound cannot be negative." )
+        }
+    } else{
+        ## Set the bounds of the search to defaults.
+        if( auto.correlated ){
+            bounds <- cbind(c(0,0),c(100,100))
+        } else{
+            bounds <- c(0,100)
+        }
+    }
     
     ## Re-order the species in the data matrix to match the tree:
     data.order <- match(x=phy$tip.label, table=rownames(data))
@@ -175,6 +194,7 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                 diag(M) <- - colSums(M)
                 ## But we use the probability matrix:
                 M <- expm(M, method = "Ward77")
+
                 ## Loglik function for the model.
                 lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
@@ -192,7 +212,7 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                 ## Will need to be a list.
                 Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
                 ## Loglik function for the model.
-                lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k, it=1, n.cores=n.cores)[[1]]
+                lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k, n.cores=n.cores)[[1]]
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
@@ -256,42 +276,45 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                             )
                 ## Loglik function for the model.
                 lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k
-                                       , it=1, n.cores=n.cores)[[1]]
+                                       , n.cores=n.cores)[[1]]
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
     }
     
-    ## We can find the maximum 'practical' value for beta conditioned in the number of categories. Beta values larger than this will not change the rate multiplier.
-    maxBeta <- findMaxBeta(ncat)
+    ## Search for upper and lower bounds for the beta parameter for the Gamma rates that do not produce 0 rate values.
+    beta.bounds <- findMaxBeta(ncat)
+    
     ## Create the vectors for the upper and lower bound for nloptr.
     ## The bound is the same for each of the sites.
-    if( bounds[1] < 0 ) stop( "The lower bound cannot be negative." )
-    ## Log the bounds in order to search in log space.
-    if( bounds[1] == 0 ){
-        ## Cannot be log(0)
-        bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
-    }
-    ## Make nlopt bounds vectors.
     if( auto.correlated ){
-        M.vec.size <- sum( upper.tri( diag(k) ) )
-        log_lb <- c( log( bounds[1] ), 0, rep(log(bounds[1]), times=M.vec.size) )
-        log_ub <- c( log( bounds[2] ), maxBeta, rep(log(bounds[2]), times=M.vec.size) )
+        ## Set bounds of 0 to a very small number.
+        zero.bound <- bounds[,1] == 0
+        bounds[zero.bound,1] <- .Machine$double.eps
+        M.vec.size <- sum( upper.tri( diag(ncat) ) )
+        ## Make nlopt bounds vectors.
+        log_lb <- c( log( bounds[1,1] ), beta.bounds[1], rep(log(bounds[2,1]), times=M.vec.size) )
+        log_ub <- c( log( bounds[1,2] ), beta.bounds[2], rep(log(bounds[2,2]), times=M.vec.size) )
     } else{
-        log_lb <- c( log( bounds[1] ), 0 )
-        log_ub <- c( log( bounds[2] ), maxBeta )
+        ## Log the bounds in order to search in log space.
+        if( bounds[1] == 0 ){
+            ## Cannot be log(0)
+            bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
+        }
+        log_lb <- c( log( bounds[1] ), beta.bounds[1] )
+        log_ub <- c( log( bounds[2] ), beta.bounds[2] )
     }
 
     ## Sample the initial parameters for the search.
     ## Here the user can provide a custom start.
     if( is.null(init) ){
         if( auto.correlated ){
-            init.pars <- c( log(runif(1, min=bounds[1], max=bounds[2]))
-                         , runif(1, min=0, max=maxBeta)
-                         , log(runif(M.vec.size, min=bounds[1], max=bounds[2])) )
+            init.pars <- c( log(runif(1, min=bounds[1,1], max=bounds[1,2]))
+                         , runif(1, min=beta.bounds[1], max=beta.bounds[2])
+                         , log(runif(M.vec.size, min=bounds[2,1], max=bounds[2,2])) )
         } else{
             init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
-                         , runif(1, min=0, max=maxBeta) )
+                         , runif(1, min=beta.bounds[1], max=beta.bounds[2]) )
         }
     } else{
         if( auto.correlated ){
@@ -299,20 +322,19 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         } else{
             if( !length( init ) == 2 ) stop("Length of init need to be 2. init[1] is for the rate and init[2] is for the Gamma function parameter (beta).")
             if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
-            if( any(init[2] < 0) | any(init[2] > maxBeta) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = 0 and max = ", maxBeta,".") )
+            if( any(init[2] < beta.bounds[1]) | any(init[2] > beta.bounds[2]) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
             init.pars <- c(log(init[1]), init[2])
         }
     }
 
     ## The "DEL" model has one more parameter.
     ## Need to adjust the length of init and bounds parameters.
+    ## Will assume the bounds for the indels are the same as for the transitions.
     if( model == "DEL" ){
-        init.pars <- c(init.pars[1], init.pars[1], init.pars[2])
-        log_lb <- c( log( bounds[1] ), log( bounds[1] ), 0
-                  , log(rep(bounds[1], times=M.vec.size)) )
-        log_ub <- c( log( bounds[2] ), log( bounds[2] ), maxBeta
-                  , log(rep(bounds[2], times=M.vec.size)) )
-    }    
+        init.pars <- c(init.pars[1], init.pars)
+        log_lb <- c(log_lb[1], log_lb)
+        log_ub <- c(log_ub[1], log_ub)
+    }
 
     ## Create the list of options for local search of nloptr:
     if( is.null(opts) ){
@@ -355,6 +377,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     ## Register finish search time.
     finish.time <- Sys.time()
     total.time <- format( difftime(finish.time, start.time) )
+
+    ## This part needs to be updated to get the parameter values for the auto-correlated model!
     
     ## Need to reconstruct the Q matrices for each of the sites.
     ## For this I need to compute the likelihood again.
@@ -363,14 +387,42 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         solution <- c(exp(fit$solution[1]), fit$solution[2])
         Q <- lapply(nstates, function(i) make.Q.list(rate=solution[1], size=i) )
         beta <- solution[2]
-        res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
+        if( auto.correlated ){
+            ## In this case need to append to the solution object.
+            solution <- c(solution, exp(fit$solution[3:length(fit$solution)]) )
+            M <- matrix(0, ncol = ncat, nrow = ncat)
+            upp.id <- upper.tri(M)
+            M[upp.id] <- solution[3:length(solution)]
+            M <- M + t(M)
+            diag(M) <- - colSums(M)
+            ## But we use the probability matrix:
+            M <- expm(M, method = "Ward77")
+            ## Need to make sure that the format for the output is the same between models.
+            res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)
+        } else{
+            res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
+        }
     }
     if( model == "DEL"){
         solution <- c(exp(fit$solution[1]), exp(fit$solution[2]), fit$solution[3])
         Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=solution[1], del.rate=solution[2]
                                                        , size=i, is.gap=gap.key[i]) )
         beta <- solution[3]
-        res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, it=1, n.cores=n.cores)[[2]]
+        if( auto.correlated ){
+            ## Need to append the rest of the parameters to the solution object.
+            solution <- c(solution, exp(fit$solution[4:length(fit$solution)]))
+            M <- matrix(0, ncol = ncat, nrow = ncat)
+            upp.id <- upper.tri(M)
+            M[upp.id] <- solution[4:length(solution)]
+            M <- M + t(M)
+            diag(M) <- - colSums(M)
+            ## But we use the probability matrix:
+            M <- expm(M, method = "Ward77")
+            ## Need to make sure that the format for the output is the same between models.
+            res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)
+        } else{
+            res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
+        }
     }
 
     ## Add the state names for the Q matrices.
@@ -381,22 +433,27 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     
     ## Before returning the list we need to include a flag for the invariant site positions.
     if( !add.invar & has.invar ){
-            res.complete <- list()
-            complete.length <- length(which.invar) ## The original size of the data matrix.
-            count <- 1 ## A counter for the loop.
-            for(i in 1:complete.length){
-                if(which.invar[i]){ ## If invariant site.
-                    res.complete[[i]] <- "invariant"
-                }else{
-                    res.complete[[i]] <- res[[count]]
-                    count <- count + 1
-                }
+        res.complete <- list()
+        complete.length <- length(which.invar) ## The original size of the data matrix.
+        count <- 1 ## A counter for the loop.
+        for(i in 1:complete.length){
+            if(which.invar[i]){ ## If invariant site.
+                res.complete[[i]] <- "invariant"
+            }else{
+                res.complete[[i]] <- res[[count]]
+                count <- count + 1
             }
-            res <- res.complete
+        }
+        res <- res.complete
     }
 
     ## Some parameters of the model depend on the choice of model estimate.
     del.rate <- NULL
+    if( auto.correlated ){
+        auto.matrix <- M
+    } else{
+        auto.matrix <- NULL
+    }
     start.par <- c(exp(init.pars[1]),init.pars[2])
     alpha <- solution[2]
     if( model == "DEL" ){
@@ -405,8 +462,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         alpha <- solution[3]
     }
     
-    out <- list( log.lik=-fit$objective, Q=res, global.rate=solution[1], del.rate=del.rate, alpha=solution[3]
-              , start.par=start.par, nlopt.global.search=global.opts, nlopt.local.search=local.opts
-              , nlopt.message=fit$message, search.time=total.time, model=model)
+    out <- list( log.lik=-fit$objective, Q=res, global.rate=solution[1], auto.matrix=auto.matrix
+              , del.rate=del.rate, alpha=solution[3], start.par=start.par, nlopt.global.search=global.opts
+              , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time, model=model)
     return( out )
 }
