@@ -55,7 +55,6 @@ logLikAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores){
 
     ## These rates CANNOT contain zero. If they are 0, then break and return error.
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
-    if( any(gamma.rates == 0) ) stop("Rates scalers cannot contain 0 when the model is auto-correlated.")
 
     ## This computes the likelihood for the sites given all the rate categories.
     gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) ), mc.cores = n.cores )
