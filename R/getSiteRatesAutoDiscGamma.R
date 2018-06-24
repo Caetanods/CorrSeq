@@ -3,118 +3,95 @@
 ##' Uses the MLE under the auto-discrete-Gamma distribution of rates among sites as described by Yang 1995 to estimate the rates for each site by computing the marginal likelihood across the sites.
 ##' @title Returns the relative Log-likelihood and estimated rates per site for the auto-discrete-Gamma.
 ##' @param phy phylogeny
-##' @param X data
-##' @param obj the vector of MLE for the parameters
-##' @param model the type of model: "ER" or "DEL", used to build the Q matrices.
-##' @param gap.key object needed in the case of a "DEL" model.
+##' @param X the formated data
+##' @param Q a list of Q matrices
+##' @param M a matrix of transition probabilities
 ##' @param root.type root
+##' @param beta the rate for the Gamma model
 ##' @param k the number of Gamma discrete categories
 ##' @param n.cores the number of cores
 ##' @return The log-likelihood for the model.
 ##' @author daniel
 ##' @noRd
-getSiteRatesAutoDiscGamma <- function(phy, X, obj, model, gap.key=NULL, root.type, k, n.cores){
-    ## Here the rates are autocorrelated among the sites using the method proposed by Yang (1995).
+getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores){
+    ## Function will compute the marginal estimates for the rates per site.
+    ## This is important for the analyses of the results.
 
-    ## Reconstruction of the Q matrices depends on the model.
-    if( model == "ER" ){
-        make.Q.list <- function(rate, size){
-            Q <- matrix(rate, nrow=size, ncol=size)
-            diag(Q) <- -(colSums(Q) - rate)
-            return(Q)
-        }
-        x <- exp(obj[1])
-        beta <- obj[2]
-        Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
-    }
-    if( model == "DEL" ){
-        if( is.null( gap.key ) ) stop("Object 'gap.key' was not found.")
-        make.Q.list.DEL <- function(global.rate, del.rate, size, is.gap){
-            ## The '-' state is always the first state in the matrix.
-            Q <- matrix(global.rate, nrow=size, ncol=size)
-            ## The separate transition is the Q[2+,1] and Q[1,2+]
-            if( is.gap ){
-                Q[1,] <- del.rate
-                Q[,1] <- del.rate
-            }
-            diag(Q) <- sapply(1:size, function(x) -(sum(Q[x,]) - Q[x,x]))
-            return(Q)
-        }
-        x.obs <- exp(obj[1])
-        x.del <- exp(obj[2])
-        beta <- obj[3]
-        Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
-                                                       , is.gap=gap.key[i])
-                    )
-    }
-    
-    ## Get the rates from the beta parameter.
+    ## These rates CANNOT contain zero. If they are 0, then break and return error.
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
-    if( any( gamma.rates <= 0 ) ) warning("MLE contains Gamma rate category <= 0.")
+    if( any(gamma.rates == 0) ) stop("Rates scalers cannot contain 0 when the model is auto-correlated.")
 
     ## This computes the likelihood for the sites given all the rate categories.
-    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) )
-                                  , mc.cores = n.cores )
+    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) ), mc.cores = n.cores )
 
-    ## Define function to compute the site likelihood conditioned on the probability of that site.
-    getSumLik <- function(gamma.lik, M, i, n, curr_sum){
-        ## gamma.lik: the list of the site likelihoods.
-        ## M: the probability matrix.
-        ## i: the row id for M (rate category for site n-1)
-        ## n: the current site. (note that this CANNOT be the first or the last site.
-        ## curr_sum: the value for the cumulative recursive sum.
-        ## This is a sum of probabilities, so we need to exponentiate.
-        return( gamma.lik[[n]][j] + log( sum( sapply(1:ncol(M), function(j) M[i,j] * exp(curr_sum) ) ) ) )
-    }
+    ## Store number of sites
+    nsites <- length(X)
 
-    ## Need to get the marginal estimate across hidden rates for each of the sites.
-    ## For each site need to hold each rate class constant and compute the likelihood.
-    ## Then the marginal estimate for the rate at that site will be the weighted average of rates across hidden classes.
-
-    ## Computing for the last site:
-    lik.marg <- matrix(nrow=k, ncol=k)
-    for( hold.marg in 1:k){
-        lik.sum <- rep(NA, times=k)
-        for( i in 1:k ){
-            lik.sum[i] <- gamma.lik[[length(X)]][hold.marg] ## The last site.
-            ## Below is a recursion code. Going from the 'last-1' site to the first site.
-            ## See likelihood formula in Yang (1995).
-            for(n in (length(X)-1):1){
-                lik.sum[i] <- getSumLik(gamma.lik=gamma.lik, M=M, i=i, n=n, curr_sum=lik.sum[i])
-            }
-        }
-        lik.marg[hold.marg,] <- lik.sum
-    }
-    lik.marg.vec <- log( colSums( exp(lik.marg) ) )
-    siteN_marg <- sum( sapply(1:k, function(i) lik.marg.vec[i] * gamma.rates[i] ) ) / sum( lik.marg.vec )
-
-    ## Computing for the next to last site:
-    ## Here it is more complicated because fixing a rate has an effect on the right and left element when computing the likelihood. The transition matrix for the rates need to be adapted.
-    lik.marg <- matrix(nrow=k, ncol=k)
-    for( hold.marg in 1:k){
-        lik.sum <- rep(NA, times=k)
-        for( i in 1:k ){
-            lik.sum[i] <- gamma.lik[[length(X)]][i] ## The last site.
-            ## Below is a recursion code. Going from the 'last-1' site to the first site.
-            ## See likelihood formula in Yang (1995).
-            for(n in (length(X)-1):1){
-                lik.sum[i] <- getSumLik(gamma.lik=gamma.lik, M=M, i=i, n=n, curr_sum=lik.sum[i])
-            }
-        }
-        lik.marg[hold.marg,] <- lik.sum
-    }
-    lik.marg.vec <- log( colSums( exp(lik.marg) ) )
-    siteN_marg <- sum( sapply(1:k, function(i) lik.marg.vec[i] * gamma.rates[i] ) ) / sum( lik.marg.vec )
+    ## Make matrix to store the marginals for each rate at each site:
+    marg <- matrix(NA, nrow = k, ncol = nsites)
     
-    ## A crappy wrap to catch cases in which the likelihood is just bad.
-    ## This is because of bad proposals. Need to improve this.
-    if( is.na( final.lik ) ){
-        print( "Bad proposal! Rejecting." )
-        print( paste(c(c(Q[1,2]), beta), collapse="; ") )
-        final.lik <- log(0)
+    ## Marginal for the last site.
+    for( cat in 1:k ){
+        N_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[nsites]][cat] )
+        lik_unit <- N_unit ## Start the loop.
+        for( site in (nsites-1):2){ ## Next to last up to the second site.
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+        }
+        marg[cat, nsites] <- getFirstUnit(gamma.lik=gamma.lik, k=k, second_unit=lik_unit)
     }
 
-    ## This model will only return the logLikelihood.
-    ## Need another funtion to compute the marginal for the Q matrices per site.
-    return( final.lik )
+    ## Marginal for the second to last site. [Will be the same for all middle sites.]
+    for( cat in 1:k ){
+        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+        lik_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[nsites-1]][cat] + lik_unit[cat])
+        for( site in (nsites-2):2){ ## Need to loop over all the rest.
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+        }
+        marg[cat, nsites-1] <- getFirstUnit(gamma.lik=gamma.lik, k=k, second_unit=lik_unit)
+    }
+
+    ## A loop from site nsites-2 to site 3.
+    for( marg.site in (nsites-2):3 ){ ## The big loop for the marginal.
+        for( cat in 1:k ){
+            lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+            for( site in (nsites-1):marg.site+1){ ## The sites to the right of the focus site.
+                lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+            }
+            ## Compute the marginal for the focus site:
+            lik_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[marg.site]][cat] + lik_unit[cat])
+            for( site in (marg.site-1):2){ ## The sites to the left of the focus site.
+                lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+            }
+            marg[cat, marg.site] <- getFirstUnit(gamma.lik=gamma.lik, k=k, second_unit=lik_unit)
+        }
+    }
+
+    ## Marginal for site 2.
+    for( cat in 1:k ){
+        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+        for( site in (nsites-1):3){ ## The sites to the right of the focus site.
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+        }
+        ## Compute the marginal for the focus site:
+        lik_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[2]][cat] + lik_unit[cat])
+        marg[cat, 2] <- getFirstUnit(gamma.lik=gamma.lik, k=k, second_unit=lik_unit)
+    }
+
+    ## Marginal for site 1.
+    for( cat in 1:k ){
+        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+        for( site in (nsites-1):2){ ## The sites to the right of the focus site.
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+        }
+        ## Compute the marginal for the focus site:
+        marg[cat, 1] <- log(1/k) + gamma.lik[[1]][cat] + lik_unit[cat]
+    }
+
+    ## To return the rates we need to compute a weighted average of the Gamma rates following the proportion from the marginal likelihood for each of the hidden rates.
+    ## This is equal to exp( log( exp(x) / sum( exp(x) ) ) ), but we cannot compute the exponential of the logLikelihood because of underflow issues.
+    rel.marg.lik <- apply( marg, 2, function(x) exp(x - logSumExp(x)) )
+    real.Q <- lapply(1:length(X), function(x) sum(rel.marg.lik[,x] * gamma.rates) * Q[[x]] )
+    
+    ## Return the matrix of marginal probabilities by now.
+    return( real.Q )
 }
