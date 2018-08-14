@@ -10,14 +10,13 @@
 ##' @param add.invar TRUE or FALSE. Whether to compute transition rates for the invariant sites or not.
 ##' @param poly.key a named list. Each element is a vector with the states represented by the polymorphism symbol. Names of the list need to match the polymorphism symbols in the data.
 ##' @param ncat categories for the gamma function
-##' @param bounds 
+##' @param bounds a numeric vector of length 2 with the lower and upper bonds for the rates
 ##' @param state.space can be "max.div", "site.div" or a numeric (length of 1 or equal to the number of columns in the data). The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.
 ##' @param gap.char the character identified as the gap in the data. Default: "-"
 ##' @param opts the list of options for nloptr. If null it will use the default parameters.
 ##' @param init 
 ##' @param verbose 
 ##' @param n.cores 
-##' @param bonds a numeric vector with the lower and upper bonds for the rates
 ##' @return A list with the log-likelihood, initial parameters and the parameter values.
 ##' @importFrom nloptr nloptr
 ##' @importFrom expm expm
@@ -186,15 +185,11 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                 ## Will need to be a list.
                 Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
                 ## The M matrix for the autocorrelation:
-                ## We estimate the transition matrix.
-                M <- matrix(0, ncol = k, nrow = k)
-                upp.id <- upper.tri(M)
-                M[upp.id] <- exp(obj[3:(sum(upp.id)+2)])
-                M <- M + t(M)
-                diag(M) <- - colSums(M)
-                ## But we use the probability matrix:
-                M <- expm(M, method = "Ward77")
-
+                ## This is a probability matrix and is different from a Q matrix:
+                M <- makeSymDTMCMatrix(size = k, obj[3:length(obj)])
+                if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
+                    return( Inf )
+                }
                 ## Loglik function for the model.
                 lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
@@ -247,14 +242,12 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                                                                , is.gap=gap.key[i])
                             )
                 ## The M matrix for the autocorrelation:
-                ## We estimate the transition matrix.
-                M <- matrix(0, ncol = k, nrow = k)
-                upp.id <- upper.tri(M)
-                M[upp.id] <- exp(obj[4:(sum(upp.id)+3)])
-                M <- M + t(M)
-                diag(M) <- - colSums(M)
-                ## But we use the probability matrix:
-                M <- expm(M, method = "Ward77")
+                ## This is a probability matrix and is different from a Q matrix:
+                M <- makeSymDTMCMatrix(size = k, obj[3:length(obj)])
+                if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
+                    return( Inf )
+                }
+                
                 ## Loglik function for the model.
                 lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
@@ -289,12 +282,16 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     ## The bound is the same for each of the sites.
     if( auto.correlated ){
         ## Set bounds of 0 to a very small number.
-        zero.bound <- bounds[,1] == 0
-        bounds[zero.bound,1] <- .Machine$double.eps
-        M.vec.size <- sum( upper.tri( diag(ncat) ) )
+        if( bounds[1] == 0 ){
+            ## Cannot be log(0)
+            bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
+        }
+        ## Finde the size of the M matrix
+        M.vec.size <- sum( upper.tri( diag(ncat), diag = TRUE ) )
         ## Make nlopt bounds vectors.
-        log_lb <- c( log( bounds[1,1] ), beta.bounds[1], rep(log(bounds[2,1]), times=M.vec.size) )
-        log_ub <- c( log( bounds[1,2] ), beta.bounds[2], rep(log(bounds[2,2]), times=M.vec.size) )
+        ## The M matrix has always bound between 0 and 1. (Need to change the call to the function)
+        log_lb <- c( log( bounds[1] ), beta.bounds[1], rep(0, times=M.vec.size) )
+        log_ub <- c( log( bounds[2] ), beta.bounds[2], rep(1, times=M.vec.size) )
     } else{
         ## Log the bounds in order to search in log space.
         if( bounds[1] == 0 ){
@@ -309,9 +306,15 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     ## Here the user can provide a custom start.
     if( is.null(init) ){
         if( auto.correlated ){
-            init.pars <- c( log(runif(1, min=bounds[1,1], max=bounds[1,2]))
+            ## Sample for a good starting value:
+            M <- 0
+            while( sum(M) < 0.001 ){
+                init.pars.M <- runif(M.vec.size, min=0, max=1)
+                M <- makeSymDTMCMatrix(size = ncat, pars = init.pars.M)
+            }
+            init.pars <- c( log(runif(1, min=bounds[1], max=bounds[2]))
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2])
-                         , log(runif(M.vec.size, min=bounds[2,1], max=bounds[2,2])) )
+                         , init.pars.M )
         } else{
             init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2]) )
@@ -319,6 +322,10 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     } else{
         if( auto.correlated ){
             if( !length( init ) == M.vec.size+2 ) stop("Wrong number of init parameters.")
+            if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
+            if( any(init[2] < beta.bounds[1]) | any(init[2] > beta.bounds[2]) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
+            init[1] <- log( init[1] ) ## Tranform the first element. Keep the rest.
+            init.pars <- init
         } else{
             if( !length( init ) == 2 ) stop("Length of init need to be 2. init[1] is for the rate and init[2] is for the Gamma function parameter (beta).")
             if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
@@ -378,8 +385,6 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     finish.time <- Sys.time()
     total.time <- format( difftime(finish.time, start.time) )
 
-    ## This part needs to be updated to get the parameter values for the auto-correlated model!
-    
     ## Need to reconstruct the Q matrices for each of the sites.
     ## For this I need to compute the likelihood again.
     ## Apply the original state names to the Q matrices.
@@ -389,18 +394,14 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         beta <- solution[2]
         if( auto.correlated ){
             ## In this case need to append to the solution object.
-            solution <- c(solution, exp(fit$solution[3:length(fit$solution)]) )
-            M <- matrix(0, ncol = ncat, nrow = ncat)
-            upp.id <- upper.tri(M)
-            M[upp.id] <- solution[3:length(solution)]
-            M <- M + t(M)
-            diag(M) <- - colSums(M)
-            ## But we use the probability matrix:
-            M <- expm(M, method = "Ward77")
+            solution <- c(solution, fit$solution[3:length(fit$solution)])
+            M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
             ## Need to make sure that the format for the output is the same between models.
-            res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)
+            res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta
+                                           , k=ncat, n.cores=n.cores)
         } else{
-            res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
+            res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat
+                                   , n.cores=n.cores)[[2]]
         }
     }
     if( model == "DEL"){
@@ -410,14 +411,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         beta <- solution[3]
         if( auto.correlated ){
             ## Need to append the rest of the parameters to the solution object.
-            solution <- c(solution, exp(fit$solution[4:length(fit$solution)]))
-            M <- matrix(0, ncol = ncat, nrow = ncat)
-            upp.id <- upper.tri(M)
-            M[upp.id] <- solution[4:length(solution)]
-            M <- M + t(M)
-            diag(M) <- - colSums(M)
-            ## But we use the probability matrix:
-            M <- expm(M, method = "Ward77")
+            solution <- c(solution, fit$solution[3:length(fit$solution)])
+            M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
             ## Need to make sure that the format for the output is the same between models.
             res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)
         } else{
@@ -466,4 +461,36 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
               , del.rate=del.rate, alpha=solution[3], start.par=start.par, nlopt.global.search=global.opts
               , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time, model=model)
     return( out )
+}
+
+makeSymDTMCMatrix <- function(size, pars){
+    ## Function to generate a Discrete Time Markov Matrix from a vector of parameters.
+    ## Will return an empty matrix if the matrix is ill-conditioned.
+    
+    mat <- matrix(0, nrow = size, ncol = size)
+    pars.number <- size + sum( upper.tri(mat) )
+    lower.id <- lower.tri(mat)
+    
+    start <- 1
+    end <- size
+    mat[1,1:size] <- pars[start:end]
+    mat[1,1:size] <- mat[1,1:size] / sum(mat[1,1:size])
+    start <- end+1
+    end <- start+(size-2)
+    for( i in 2:(size) ){
+        mat[lower.id] <- t(mat)[lower.id] ## Update lower.tri
+        mat[i,i:size] <- pars[start:end]
+        mat[i,i:size] <- ( mat[i,i:size] * (1 - sum(mat[i,1:(i-1)])) ) / sum( mat[i,i:size] )
+        start <- end+1
+        end <- start+(size-i-1)
+    }
+    ## Return mat or return an empty matrix.
+    ## If empty matrix then I can set logLik to -Inf.
+    ## This will equivalent to rejecting a step into a parameter that is invalid.
+    ## A improvement to this would be to find a way to sample this matrix without error.
+    if( any( mat < 0 ) | any( apply(mat, 1, sum) + 1 != 2 ) ){
+        return( mat <- matrix(0, nrow = size, ncol = size) )
+    } else{    
+        return(mat)
+    }    
 }
