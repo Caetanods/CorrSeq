@@ -44,13 +44,6 @@ getFirstUnit <- function(gamma.lik, k, second_unit){
 ##' @author daniel
 ##' @noRd
 logLikAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores){
-    ## phy = phylo
-    ## X = data frame with number of columns equal to the number of traits and rownames equal to the species names in the phylogeny.
-    ## Q = transition matrix among the states. Here we use a global transition matrix, meaning that all the traits have the same number of states.
-    ## pi = data frame with the probabilities at the root for each of the states for each of the traits.
-    ## beta = the shape parameter for the Gamma distribution used to model among site rate variation.
-    ## k = the parameter for the number of rate categories.
-
     ## Here the rates are autocorrelated among the sites using the method proposed by Yang (1995).
 
     ## These rates CANNOT contain zero. If they are 0, then break and return error.
