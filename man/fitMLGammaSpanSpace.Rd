@@ -26,7 +26,7 @@ fitMLGammaSpanSpace(data, phy, model = "ER", auto.correlated = FALSE,
 
 \item{ncat}{categories for the gamma function}
 
-\item{bounds}{}
+\item{bounds}{a numeric vector of length 2 with the lower and upper bonds for the rates}
 
 \item{state.space}{can be "max.div", "site.div" or a numeric (length of 1 or equal to the number of columns in the data). The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.}
 
@@ -39,8 +39,6 @@ fitMLGammaSpanSpace(data, phy, model = "ER", auto.correlated = FALSE,
 \item{verbose}{}
 
 \item{n.cores}{}
-
-\item{bonds}{a numeric vector with the lower and upper bonds for the rates}
 }
 \value{
 A list with the log-likelihood, initial parameters and the parameter values.
