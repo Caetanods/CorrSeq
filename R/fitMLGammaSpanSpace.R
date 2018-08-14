@@ -54,21 +54,11 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
 
     ## Check if the 'bounds' argument has the correct format:
     if( !is.null( bounds ) ){
-        if( auto.correlated ){
-            if( !is.matrix( bounds ) ) stop( "Wrong format for 'bounds' when using 'auto.correlated' model." )
-            if( !ncol( bounds ) == 2 | !nrow( bounds ) == 2 ) stop( "Wrong format for 'bounds' when using 'auto.correlated' model." )
-            if( any( bounds[,2] - bounds[,1] <= 0 ) ) stop( "Wrong format for 'bounds' when using 'auto.correlated' model." )
-        } else{
-            if( !length( bounds ) == 2) stop( "Wrong format for the 'bounds' argument." )
-            if( bounds[1] < 0 ) stop( "The lower bound cannot be negative." )
-        }
+        if( !length( bounds ) == 2) stop( "Wrong format for the 'bounds' argument." )
+        if( bounds[1] < 0 ) stop( "The lower bound cannot be negative." )
     } else{
         ## Set the bounds of the search to defaults.
-        if( auto.correlated ){
-            bounds <- cbind(c(0,0),c(100,100))
-        } else{
-            bounds <- c(0,100)
-        }
+        bounds <- c(0,100)
     }
     
     ## Re-order the species in the data matrix to match the tree:
