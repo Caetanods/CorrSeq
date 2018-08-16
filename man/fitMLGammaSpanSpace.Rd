@@ -4,7 +4,7 @@
 \alias{fitMLGammaSpanSpace}
 \title{Find the maximum likelihood for the model with the gamma function.}
 \usage{
-fitMLGammaSpanSpace(data, phy, model = "ER", auto.correlated = FALSE,
+fitMLGammaSpanSpace(data, phy, Q.model = "ER", rate.model = "gamma",
   root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4,
   bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL,
   init = NULL, verbose = TRUE, n.cores = 1)
@@ -14,9 +14,9 @@ fitMLGammaSpanSpace(data, phy, model = "ER", auto.correlated = FALSE,
 
 \item{phy}{phylogeny}
 
-\item{model}{Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).}
+\item{Q.model}{Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).}
 
-\item{auto.correlated}{Whether to use the auto-correlated discrete Gamma model from Yang 1995.}
+\item{rate.model}{options are "correlated", "gamma", and "single.rate"}
 
 \item{root.type}{one of "madfitz", or "equal". Need to extend to accept a observed vector of probabilities.}
 

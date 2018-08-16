@@ -4,8 +4,8 @@
 ##' @title Find the maximum likelihood for the model with the gamma function.
 ##' @param data matrix with species names as rownames.
 ##' @param phy phylogeny
-##' @param model Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).
-##' @param auto.correlated Whether to use the auto-correlated discrete Gamma model from Yang 1995.
+##' @param Q.model Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).
+##' @param rate.model options are "correlated", "gamma", and "single.rate"
 ##' @param root.type one of "madfitz", or "equal". Need to extend to accept a observed vector of probabilities.
 ##' @param add.invar TRUE or FALSE. Whether to compute transition rates for the invariant sites or not.
 ##' @param poly.key a named list. Each element is a vector with the states represented by the polymorphism symbol. Names of the list need to match the polymorphism symbols in the data.
@@ -22,7 +22,7 @@
 ##' @importFrom expm expm
 ##' @export
 ##' @author daniel
-fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE, root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
+fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
     ## At the moment the model assumes that all transitions have the same rate.
     ## So just a single rate is estimated for each of the transition matrices. Of course, this rate is changed by the gamma distribution.
     ## This is a fork of the original function.
@@ -30,7 +30,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     ## Need to think on some rules as how to deal with these. Assuming that the transition rate is the same among the states, we might have different possible options to deal with the sizes of the states.
     
     root.type <- match.arg(root.type, choices=c("madfitz","equal"), several.ok=FALSE)
-    model <- match.arg(model, choices=c("ER","DEL"), several.ok=FALSE)
+    rate.model <- match.arg(rate.model, choices=c("correlated", "gamma", "single.rate"), several.ok=FALSE)
+    Q.model <- match.arg(Q.model, choices=c("ER","DEL"), several.ok=FALSE)
     if( !is.logical(add.invar) ) stop("Argument 'add.invar' need to TRUE or FALSE.")
 
     ## Check the poly.key argument.
@@ -42,15 +43,15 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
             stop( "Argument 'poly.key' needs to be NULL or a named list. See 'Details'." )
         }
     }
-        
+    
     ## Check phylogeny and data:
     ## Consider adding step to organize the species names in the data following the phy names.
     if( is.null( rownames(data) ) ) stop("data need to have rownames as the species names.")
     match.names <- all( rownames(data) %in% phy$tip.label ) & all( phy$tip.label %in% rownames(data) )
     if( !match.names ) stop("Secies names do not match between data and phylogeny!")
 
-    ## If the model = "DEL" then the data need to show at least 1 instance of the gap.char:
-    if( model == "DEL" & !any(c(data) == gap.char) ) stop( "Chosen model assumes 'gaps' but symbol in 'gap.char' not found in the data. Change 'gap.char' or chose other model option." )
+    ## If the Q.model = "DEL" then the data need to show at least 1 instance of the gap.char:
+    if( Q.model == "DEL" & !any(c(data) == gap.char) ) stop( "Chosen model assumes 'gaps' but symbol in 'gap.char' not found in the data. Change 'gap.char' or chose other model option." )
 
     ## Check if the 'bounds' argument has the correct format:
     if( !is.null( bounds ) ){
@@ -77,12 +78,12 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         ## Create 'has.invar' as FALSE.
         has.invar <- FALSE
     }
-        
+    
     ## Make data checks and get information from the matrix.
     nsites <- ncol(data)
     names.data <- rownames(data)
 
-    ## If the model is "DEL" then I need to code states such that '-' is always the first state.
+    ## If the Q.model is "DEL" then I need to code states such that '-' is always the first state.
     nstates <- rep(0, times=nsites) ## Number of observed states in each site.
     gap.key <- rep(FALSE, times=nsites) ## The key for sites with gaps
     Xlist <- list() ## The list of matrices to use in the likelihood.
@@ -154,15 +155,15 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         Xlist[[i]] <- tmp.Xlist
     }
 
-    ## Likelihood function will depend on the model now:
-    if( model == "ER" ){        
+    ## Likelihood function will depend on the Q.model now:
+    if( Q.model == "ER" ){        
         make.Q.list <- function(rate, size){
             Q <- matrix(rate, nrow=size, ncol=size)
             diag(Q) <- -(colSums(Q) - rate)
             return(Q)
         }
         ## Check if the model is the autocorrelated:
-        if( auto.correlated ){
+        if( rate.model == "correlated" ){
             wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
                 ## obj is a vector of variable length.
                 ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta, obj[3:n] = the elements of the M matrix (for the autocorrelation).
@@ -178,13 +179,15 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                 ## This is a probability matrix and is different from a Q matrix:
                 M <- makeSymDTMCMatrix(size = k, obj[3:length(obj)])
                 if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
-                    return( Inf )
+                    print("Bad M matrix!")
+                    return( Inf ) ## NLOPT is minimizying the function!
                 }
                 ## Loglik function for the model.
                 lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
-        } else{
+        }
+        if(rate.model == "gamma"){
             wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
                 ## obj is a vector of 2 parameters.
                 ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta.
@@ -201,8 +204,25 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
+        if( rate.model == "single.rate" ){
+            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+                ## obj is a vector of 1 parameter.
+                ## obj[1] = Q[1,2] (shared for all sites).
+                ## phy = phylogeny
+                ## data = data matrix.
+                ## nstates = number of states in each of the sites in the data (now this is a vector).
+                ## k is ignored in this case.
+                ## gap.key is ignored in this case.
+                x <- exp(obj[1])
+                ## Will need to be a list.
+                Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
+                ## Loglik function for the model.
+                lik <- loglikSingleRate(phy=phy, X=data, Q=Q, root.type=root.type, n.cores=n.cores)
+                return( -lik ) ## Remember that NLOPT is minimizying the function!
+            }
+        }
     }
-    if( model == "DEL" ){
+    if( Q.model == "DEL" ){
         make.Q.list.DEL <- function(global.rate, del.rate, size, is.gap){
             ## The '-' state is always the first state in the matrix.
             Q <- matrix(global.rate, nrow=size, ncol=size)
@@ -214,8 +234,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
             diag(Q) <- sapply(1:size, function(x) -(sum(Q[x,]) - Q[x,x]))
             return(Q)
         }
-                ## Check if the model is the autocorrelated:
-        if( auto.correlated ){
+        ## Check if the model is the autocorrelated:
+        if( rate.model == "correlated" ){
             wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
                 ## obj is a vector of 3 parameters.
                 ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2]
@@ -242,7 +262,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                 lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
-        } else{
+        }
+        if(rate.model == "gamma"){
             wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
                 ## obj is a vector of 3 parameters.
                 ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2].
@@ -263,14 +284,32 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
+        if(rate.model == "single.rate"){
+            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+                ## obj is a vector of 2 parameters.
+                ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2].
+                x.obs <- exp(obj[1])
+                x.del <- exp(obj[2])
+                ## Will need to be a list.
+                Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
+                                                               , is.gap=gap.key[i])
+                            )
+                ## Loglik function for the model.
+                lik <- loglikSingleRate(phy=phy, X=data, Q=Q, root.type=root.type, n.cores=n.cores)
+                return( -lik ) ## Remember that NLOPT is minimizying the function!
+            }
+        }
     }
     
     ## Search for upper and lower bounds for the beta parameter for the Gamma rates that do not produce 0 rate values.
-    beta.bounds <- findMaxBeta(ncat)
+    if( rate.model %in% c("correlated","gamma") ){
+        ## The single rate model does not have a beta parameter.
+        beta.bounds <- findMaxBeta(ncat)
+    }
     
     ## Create the vectors for the upper and lower bound for nloptr.
     ## The bound is the same for each of the sites.
-    if( auto.correlated ){
+    if( rate.model == "correlated" ){
         ## Set bounds of 0 to a very small number.
         if( bounds[1] == 0 ){
             ## Cannot be log(0)
@@ -282,7 +321,8 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         ## The M matrix has always bound between 0 and 1. (Need to change the call to the function)
         log_lb <- c( log( bounds[1] ), beta.bounds[1], rep(0, times=M.vec.size) )
         log_ub <- c( log( bounds[2] ), beta.bounds[2], rep(1, times=M.vec.size) )
-    } else{
+    }
+    if( rate.model == "gamma"){
         ## Log the bounds in order to search in log space.
         if( bounds[1] == 0 ){
             ## Cannot be log(0)
@@ -291,43 +331,64 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
         log_lb <- c( log( bounds[1] ), beta.bounds[1] )
         log_ub <- c( log( bounds[2] ), beta.bounds[2] )
     }
+    if( rate.model == "single.rate" ){
+        ## Log the bounds in order to search in log space.
+        if( bounds[1] == 0 ){
+            ## Cannot be log(0)
+            bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
+        }
+        log_lb <- log( bounds[1] )
+        log_ub <- log( bounds[2] )
+    }
 
     ## Sample the initial parameters for the search.
     ## Here the user can provide a custom start.
     if( is.null(init) ){
-        if( auto.correlated ){
+        if( rate.model == "correlated" ){
             ## Sample for a good starting value:
             M <- 0
             while( sum(M) < 0.001 ){
                 init.pars.M <- runif(M.vec.size, min=0, max=1)
                 M <- makeSymDTMCMatrix(size = ncat, pars = init.pars.M)
             }
+            print("Initial value for M matrix:")
+            print( M )
             init.pars <- c( log(runif(1, min=bounds[1], max=bounds[2]))
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2])
                          , init.pars.M )
-        } else{
+        }
+        if(rate.model == "gamma"){
             init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2]) )
         }
+        if(rate.model == "single.rate"){
+            init.pars <- log(runif(1, min=bounds[1], max=bounds[2]))
+        }            
     } else{
-        if( auto.correlated ){
+        if( rate.model == "correlated" ){
             if( !length( init ) == M.vec.size+2 ) stop("Wrong number of init parameters.")
             if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
             if( any(init[2] < beta.bounds[1]) | any(init[2] > beta.bounds[2]) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
             init[1] <- log( init[1] ) ## Tranform the first element. Keep the rest.
             init.pars <- init
-        } else{
+        }
+        if(rate.model == "gamma"){
             if( !length( init ) == 2 ) stop("Length of init need to be 2. init[1] is for the rate and init[2] is for the Gamma function parameter (beta).")
             if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
             if( any(init[2] < beta.bounds[1]) | any(init[2] > beta.bounds[2]) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
             init.pars <- c(log(init[1]), init[2])
+        }
+        if(rate.model == "single.rate"){
+            if( !length( init ) == 1 ) stop("Length of init need to be 1. init is for the rate.")
+            if( any(init < bounds[1]) | any(init > bounds[2]) ) stop("Value for init is out of bounds (defined by 'bounds').")
+            init.pars <- log(init)
         }
     }
 
     ## The "DEL" model has one more parameter.
     ## Need to adjust the length of init and bounds parameters.
     ## Will assume the bounds for the indels are the same as for the transitions.
-    if( model == "DEL" ){
+    if( Q.model == "DEL" ){
         init.pars <- c(init.pars[1], init.pars)
         log_lb <- c(log_lb[1], log_lb)
         log_ub <- c(log_ub[1], log_ub)
@@ -337,7 +398,7 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     if( is.null(opts) ){
         ## nlopt.opts <- list(algorithm="NLOPT_LN_SBPLX", "ftol_rel"=1e-08, "maxtime"=170000000, "maxeval"=10000)
         ## Increasing the tolerance of the Global search here because it is going to be followed by a local search.
-        global.opts <- list("algorithm"="NLOPT_GN_DIRECT", "maxeval"=100000, "ftol_rel"=0.00001)
+        global.opts <- list("algorithm"="NLOPT_GN_DIRECT", "maxeval"=10000, "ftol_rel"=0.0001)
         local.opts <- list("algorithm"="NLOPT_LN_SBPLX", "maxeval"=1000000, "ftol_rel"=.Machine$double.eps^0.5)
     } else{
         if( !is.list(opts) ) stop( "The argument 'opts' needs to be a list format" )
@@ -378,36 +439,44 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
     ## Need to reconstruct the Q matrices for each of the sites.
     ## For this I need to compute the likelihood again.
     ## Apply the original state names to the Q matrices.
-    if( model == "ER"){
+    if( Q.model == "ER"){
         solution <- c(exp(fit$solution[1]), fit$solution[2])
         Q <- lapply(nstates, function(i) make.Q.list(rate=solution[1], size=i) )
         beta <- solution[2]
-        if( auto.correlated ){
+        if( rate.model == "correlated" ){
             ## In this case need to append to the solution object.
             solution <- c(solution, fit$solution[3:length(fit$solution)])
             M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
             ## Need to make sure that the format for the output is the same between models.
             res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta
                                            , k=ncat, n.cores=n.cores)
-        } else{
+        }
+        if(rate.model == "gamma"){
             res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat
                                    , n.cores=n.cores)[[2]]
         }
+        if(rate.model == "single.rate"){
+            res <- Q
+        }            
     }
-    if( model == "DEL"){
+    if( Q.model == "DEL"){
         solution <- c(exp(fit$solution[1]), exp(fit$solution[2]), fit$solution[3])
         Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=solution[1], del.rate=solution[2]
                                                        , size=i, is.gap=gap.key[i]) )
         beta <- solution[3]
-        if( auto.correlated ){
+        if( rate.model == "correlated" ){
             ## Need to append the rest of the parameters to the solution object.
             solution <- c(solution, fit$solution[3:length(fit$solution)])
             M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
             ## Need to make sure that the format for the output is the same between models.
             res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)
-        } else{
+        }
+        if(rate.model == "gamma"){
             res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
         }
+        if(rate.model == "single.rate"){
+            res <- Q
+        }            
     }
 
     ## Add the state names for the Q matrices.
@@ -434,24 +503,37 @@ fitMLGammaSpanSpace <- function(data, phy, model = "ER", auto.correlated = FALSE
 
     ## Some parameters of the model depend on the choice of model estimate.
     del.rate <- NULL
-    if( auto.correlated ){
+    if( rate.model == "correlated" ){
         auto.matrix <- M
     } else{
         auto.matrix <- NULL
     }
-    start.par <- c(exp(init.pars[1]),init.pars[2])
-    alpha <- solution[2]
-    if( model == "DEL" ){
-        del.rate <- solution[2]
-        start.par <- c(exp(init.pars[1]), exp(init.pars[2]), init.pars[3])
-        alpha <- solution[3]
+    if( rate.model == "single.rate" ){
+        start.par <- exp(init.pars[1])
+        alpha <- NULL
+        if( Q.model == "DEL" ){
+            del.rate <- solution[2]
+            start.par <- c(exp(init.pars[1]), exp(init.pars[2]))
+            alpha <- NULL
+        }
+    } else{        
+        start.par <- c(exp(init.pars[1]),init.pars[2])
+        alpha <- solution[2]
+        if( Q.model == "DEL" ){
+            del.rate <- solution[2]
+            start.par <- c(exp(init.pars[1]), exp(init.pars[2]), init.pars[3])
+            alpha <- solution[3]
+        }
     }
     
     out <- list( log.lik=-fit$objective, Q=res, global.rate=solution[1], auto.matrix=auto.matrix
-              , del.rate=del.rate, alpha=solution[3], start.par=start.par, nlopt.global.search=global.opts
-              , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time, model=model)
+              , del.rate=del.rate, alpha=alpha, start.par=start.par, nlopt.global.search=global.opts
+              , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time
+              , Q.model=Q.model, rate.model=rate.model)
     return( out )
 }
+    
+    
 
 makeSymDTMCMatrix <- function(size, pars){
     ## Function to generate a Discrete Time Markov Matrix from a vector of parameters.
