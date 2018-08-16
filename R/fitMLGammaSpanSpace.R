@@ -350,8 +350,6 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 init.pars.M <- runif(M.vec.size, min=0, max=1)
                 M <- makeSymDTMCMatrix(size = ncat, pars = init.pars.M)
             }
-            print("Initial value for M matrix:")
-            print( M )
             init.pars <- c( log(runif(1, min=bounds[1], max=bounds[2]))
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2])
                          , init.pars.M )
