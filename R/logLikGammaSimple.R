@@ -43,7 +43,7 @@ loglikGammaSimple <- function(phy, X, Q, root.type, beta, k, n.cores){
     ## A crappy wrap to catch cases in which the likelihood is just bad.
     ## This is because of bad proposals. Need to improve this.
     if( is.na( final.lik ) ){
-        print("Bad proposal! Rejecting")
+        ## print("Bad proposal! Rejecting")
         final.lik <- log(0)
     }
 

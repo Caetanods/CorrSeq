@@ -80,9 +80,9 @@ logLikAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores){
     ## A crappy wrap to catch cases in which the likelihood is just bad.
     ## This is because of bad proposals. Need to improve this.
     if( is.na( final_lik ) ){
-        id <- paste(sample(x=0:9, size = 5, replace = TRUE), collapse="")
-        save(Q, M, beta, k, phy, X, file = paste0("error_",id,".RData"))
-        print( paste0("Bad proposal ID: ", id) )
+        ## id <- paste(sample(x=0:9, size = 5, replace = TRUE), collapse="")
+        ## save(Q, M, beta, k, phy, X, file = paste0("error_",id,".RData"))
+        ## print( paste0("Bad proposal ID: ", id) )
         final_lik <- log(0)
     }
 
