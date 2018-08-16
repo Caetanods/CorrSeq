@@ -9,8 +9,8 @@
 ##' @author daniel
 ##' @noRd
 logSumExp <- function(x){
-    ## Sets the minimum quantity to be equal to 0.5
-    cc <- log(0.5) - min(x)
+    ## Sets the minimum quantity to be equal to 1e-15
+    cc <- log(1e-30) - min(x)
     return( log( sum( exp( x + cc ) ) ) - cc )
 }
 

@@ -179,7 +179,6 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 ## This is a probability matrix and is different from a Q matrix:
                 M <- makeSymDTMCMatrix(size = k, obj[3:length(obj)])
                 if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
-                    print("Bad M matrix!")
                     return( Inf ) ## NLOPT is minimizying the function!
                 }
                 ## Loglik function for the model.
