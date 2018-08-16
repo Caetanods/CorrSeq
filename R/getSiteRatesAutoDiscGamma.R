@@ -21,6 +21,9 @@ getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores)
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
     if( any(gamma.rates == 0) ) stop("Rates scalers cannot contain 0 when the model is auto-correlated.")
 
+    ## Keep track of 0 probabilities in the M matrix:
+    keep <- is.finite( log( M ) )
+    
     ## This computes the likelihood for the sites given all the rate categories.
     gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) ), mc.cores = n.cores )
 
@@ -35,17 +38,17 @@ getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores)
         N_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[nsites]][cat] )
         lik_unit <- N_unit ## Start the loop.
         for( site in (nsites-1):2){ ## Next to last up to the second site.
-            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit, keep = keep))
         }
         marg[cat, nsites] <- getFirstUnit(gamma.lik=gamma.lik, k=k, second_unit=lik_unit)
     }
 
     ## Marginal for the second to last site. [Will be the same for all middle sites.]
     for( cat in 1:k ){
-        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites, keep = keep))
         lik_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[nsites-1]][cat] + lik_unit[cat])
         for( site in (nsites-2):2){ ## Need to loop over all the rest.
-            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit, keep = keep))
         }
         marg[cat, nsites-1] <- getFirstUnit(gamma.lik=gamma.lik, k=k, second_unit=lik_unit)
     }
@@ -53,14 +56,14 @@ getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores)
     ## A loop from site nsites-2 to site 3.
     for( marg.site in (nsites-2):3 ){ ## The big loop for the marginal.
         for( cat in 1:k ){
-            lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+            lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites, keep = keep))
             for( site in (nsites-1):marg.site+1){ ## The sites to the right of the focus site.
-                lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+                lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit, keep = keep))
             }
             ## Compute the marginal for the focus site:
             lik_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[marg.site]][cat] + lik_unit[cat])
             for( site in (marg.site-1):2){ ## The sites to the left of the focus site.
-                lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+                lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit, keep = keep))
             }
             marg[cat, marg.site] <- getFirstUnit(gamma.lik=gamma.lik, k=k, second_unit=lik_unit)
         }
@@ -68,9 +71,9 @@ getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores)
 
     ## Marginal for site 2.
     for( cat in 1:k ){
-        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites, keep = keep))
         for( site in (nsites-1):3){ ## The sites to the right of the focus site.
-            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit, keep = keep))
         }
         ## Compute the marginal for the focus site:
         lik_unit <- sapply(1:k, function(i) log(M[i,cat]) + gamma.lik[[2]][cat] + lik_unit[cat])
@@ -79,9 +82,9 @@ getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores)
 
     ## Marginal for site 1.
     for( cat in 1:k ){
-        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites))
+        lik_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=nsites, keep = keep))
         for( site in (nsites-1):2){ ## The sites to the right of the focus site.
-            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit))
+            lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k, n=site, left_unit=lik_unit, keep = keep))
         }
         ## Compute the marginal for the focus site:
         marg[cat, 1] <- log(1/k) + gamma.lik[[1]][cat] + lik_unit[cat]
