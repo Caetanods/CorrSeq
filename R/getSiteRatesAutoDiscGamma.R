@@ -13,7 +13,7 @@
 ##' @return The log-likelihood for the model.
 ##' @author daniel
 ##' @noRd
-getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores){
+getSiteRatesAutoDiscGamma <- function(n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, X, Q, M, root_type, beta, k, n.cores){
     ## Function will compute the marginal estimates for the rates per site.
     ## This is important for the analyses of the results.
 
@@ -25,7 +25,8 @@ getSiteRatesAutoDiscGamma <- function(phy, X, Q, M, root.type, beta, k, n.cores)
     keep <- is.finite( log( M ) )
     
     ## This computes the likelihood for the sites given all the rate categories.
-    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) ), mc.cores = n.cores )
+    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) seqtraits:::logLikMk_C(n_nodes = n_nodes, n_tips = n_tips, n_states = n_states[site], edge_len = edge_len, edge_mat = edge_mat, parents = parents, X = X[[site]], Q = r*Q[[site]], root_node = root_node, root_type = root_type) ), mc.cores = n.cores )
+    ## gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) ), mc.cores = n.cores )
 
     ## Store number of sites
     nsites <- length(X)

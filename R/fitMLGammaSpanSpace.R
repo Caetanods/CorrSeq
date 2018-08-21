@@ -20,6 +20,7 @@
 ##' @return A list with the log-likelihood, initial parameters and the parameter values.
 ##' @importFrom nloptr nloptr
 ##' @importFrom expm expm
+##' @importFrom ape reorder.phylo
 ##' @export
 ##' @author daniel
 fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
@@ -155,6 +156,18 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         Xlist[[i]] <- tmp.Xlist
     }
 
+    ## Compute some quantities related to the phylogeny that will be used by the likelihood function:
+    prun.phy <- reorder.phylo(x = phy, order = "postorder")
+    edge_mat <- prun.phy$edge
+    ## The root type need to be a numeric.
+    root_type <- as.numeric( switch(root.type, "madfitz" = 1, "equal" = 0) )
+    n_nodes <- prun.phy$Nnode
+    n_tips <- length( prun.phy$tip.label )
+    root_node <- n_tips + 1
+    n_states <- sapply(Xlist, function(i) ncol(i) )
+    edge_len <- prun.phy$edge.length
+    parents <- unique( prun.phy$edge[,1] )
+
     ## Likelihood function will depend on the Q.model now:
     if( Q.model == "ER" ){        
         make.Q.list <- function(rate, size){
@@ -162,9 +175,10 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
             diag(Q) <- -(colSums(Q) - rate)
             return(Q)
         }
+        
         ## Check if the model is the autocorrelated:
         if( rate.model == "correlated" ){
-            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+            wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of variable length.
                 ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta, obj[3:n] = the elements of the M matrix (for the autocorrelation).
                 ## phy = phylogeny
@@ -174,7 +188,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 x <- exp(obj[1])
                 beta <- obj[2]
                 ## Will need to be a list.
-                Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
+                Q <- lapply(n_states, function(i) make.Q.list(rate=x[1], size=i) )
                 ## The M matrix for the autocorrelation:
                 ## This is a probability matrix and is different from a Q matrix:
                 M <- makeSymDTMCMatrix(size = k, obj[3:length(obj)])
@@ -182,12 +196,17 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                     return( Inf ) ## NLOPT is minimizying the function!
                 }
                 ## Loglik function for the model.
-                lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
+                lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                            , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                            , root_node=root_node, X = data, Q = Q, M = M
+                                            , root_type=root_type, beta=beta, k=k, n.cores=n.cores)
+                ## lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type
+                ##                          , beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
         if(rate.model == "gamma"){
-            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+            wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of 2 parameters.
                 ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta.
                 ## phy = phylogeny
@@ -197,14 +216,18 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 x <- exp(obj[1])
                 beta <- obj[2]
                 ## Will need to be a list.
-                Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
+                Q <- lapply(n_states, function(i) make.Q.list(rate=x[1], size=i) )
                 ## Loglik function for the model.
-                lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k, n.cores=n.cores)[[1]]
+                lik <- loglikGammaSimple_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                            , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                            , root_node=root_node, X = data, Q = Q
+                                            , root_type=root_type, beta=beta, k=k, n.cores=n.cores)[[1]]
+                ## lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k, n.cores=n.cores)[[1]]
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
         if( rate.model == "single.rate" ){
-            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+            wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of 1 parameter.
                 ## obj[1] = Q[1,2] (shared for all sites).
                 ## phy = phylogeny
@@ -214,9 +237,13 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 ## gap.key is ignored in this case.
                 x <- exp(obj[1])
                 ## Will need to be a list.
-                Q <- lapply(nstates, function(i) make.Q.list(rate=x[1], size=i) )
+                Q <- lapply(n_states, function(i) make.Q.list(rate=x[1], size=i) )
                 ## Loglik function for the model.
-                lik <- loglikSingleRate(phy=phy, X=data, Q=Q, root.type=root.type, n.cores=n.cores)
+                lik <- loglikSingleRate_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                        , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                        , root_node=root_node, X = data, Q = Q
+                                        , root_type=root_type, n.cores=n.cores)
+                ## lik <- loglikSingleRate(phy=phy, X=data, Q=Q, root.type=root.type, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
@@ -235,7 +262,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         }
         ## Check if the model is the autocorrelated:
         if( rate.model == "correlated" ){
-            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+            wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of 3 parameters.
                 ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2]
                 ## obj[3] = the beta rate (for the Gamma function).
@@ -247,7 +274,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 x.del <- exp(obj[2])
                 beta <- obj[3]
                 ## Will need to be a list.
-                Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
+                Q <- lapply(n_states, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
                                                                , is.gap=gap.key[i])
                             )
                 ## The M matrix for the autocorrelation:
@@ -258,12 +285,16 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 }
                 
                 ## Loglik function for the model.
-                lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
+                lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                           , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                           , root_node=root_node, X = data, Q = Q, M = M
+                                           , root_type=root_type, beta=beta, k=k, n.cores=n.cores)
+                ## lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
         if(rate.model == "gamma"){
-            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+            wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of 3 parameters.
                 ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2].
                 ## obj[3] = the beta rate (for the Gamma function).
@@ -274,27 +305,35 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 x.del <- exp(obj[2])
                 beta <- obj[3]
                 ## Will need to be a list.
-                Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
+                Q <- lapply(n_states, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
                                                                , is.gap=gap.key[i])
                             )
                 ## Loglik function for the model.
-                lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k
-                                       , n.cores=n.cores)[[1]]
+                lik <- loglikGammaSimple_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                         , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                         , root_node=root_node, X = data, Q = Q
+                                         , root_type=root_type, beta=beta, k=k, n.cores=n.cores)[[1]]
+                ## lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k
+                ##                        , n.cores=n.cores)[[1]]
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
         if(rate.model == "single.rate"){
-            wrapLogLik <- function(obj, phy, data, nstates, k, root.type, gap.key){
+            wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of 2 parameters.
                 ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2].
                 x.obs <- exp(obj[1])
                 x.del <- exp(obj[2])
                 ## Will need to be a list.
-                Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
+                Q <- lapply(n_states, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
                                                                , is.gap=gap.key[i])
                             )
                 ## Loglik function for the model.
-                lik <- loglikSingleRate(phy=phy, X=data, Q=Q, root.type=root.type, n.cores=n.cores)
+                lik <- loglikSingleRate_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                        , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                        , root_node=root_node, X = data, Q = Q
+                                        , root_type=root_type, n.cores=n.cores)
+                ## lik <- loglikSingleRate(phy=phy, X=data, Q=Q, root.type=root.type, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
@@ -410,14 +449,18 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     if( verbose ){
         print( "Starting global MLE search. (First pass)" )
         global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
-                       , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
+                       , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
+                       , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
+                       , k=ncat, root_type=root_type, gap.key=gap.key)
         print( "Global search finished." )
         ## print( paste("Log-lik ", -global$objective
         ##            , "; rate ", exp(global$solution[1])
         ##            , "; alpha ", global$solution[2], collapse="") )
         print( "Starting local MLE search. (Second pass)" )
-        fit <- nloptr(x0=global$solution, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
-                    , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
+        fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
+                       , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
+                       , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
+                       , k=ncat, root_type=root_type, gap.key=gap.key)
         print( "Local search solution:" )
         ## print( paste("Log-lik ", -fit$objective
         ##            , "; rate ", exp(fit$solution[1])
@@ -425,9 +468,13 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         print( "Reconstructing site-wise Q matrices." )
     } else{
         global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
-                       , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
-        fit <- nloptr(x0=global$solution, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
-                    , phy=phy, data=Xlist, nstates=nstates, k=ncat, root.type=root.type, gap.key=gap.key)
+                       , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
+                       , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
+                       , k=ncat, root_type=root_type, gap.key=gap.key)
+        fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
+                       , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
+                       , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
+                       , k=ncat, root_type=root_type, gap.key=gap.key)
     }
     ## Register finish search time.
     finish.time <- Sys.time()
@@ -438,19 +485,21 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     ## Apply the original state names to the Q matrices.
     if( Q.model == "ER"){
         solution <- c(exp(fit$solution[1]), fit$solution[2])
-        Q <- lapply(nstates, function(i) make.Q.list(rate=solution[1], size=i) )
+        Q <- lapply(n_states, function(i) make.Q.list(rate=solution[1], size=i) )
         beta <- solution[2]
         if( rate.model == "correlated" ){
             ## In this case need to append to the solution object.
             solution <- c(solution, fit$solution[3:length(fit$solution)])
             M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
             ## Need to make sure that the format for the output is the same between models.
-            res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta
-                                           , k=ncat, n.cores=n.cores)
+            res <- getSiteRatesAutoDiscGamma(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len, edge_mat=edge_mat, parents=parents, root_node=root_node, root_type=root_type, k=ncat, X=Xlist, Q=Q, M=M, beta=beta, n.cores=n.cores)
         }
         if(rate.model == "gamma"){
-            res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat
-                                   , n.cores=n.cores)[[2]]
+            res <- loglikGammaSimple_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                     , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                     , root_node=root_node, X = Xlist, Q = Q
+                                     , root_type=root_type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
+            ## res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
         }
         if(rate.model == "single.rate"){
             res <- Q
@@ -458,7 +507,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     }
     if( Q.model == "DEL"){
         solution <- c(exp(fit$solution[1]), exp(fit$solution[2]), fit$solution[3])
-        Q <- lapply(nstates, function(i) make.Q.list.DEL(global.rate=solution[1], del.rate=solution[2]
+        Q <- lapply(n_states, function(i) make.Q.list.DEL(global.rate=solution[1], del.rate=solution[2]
                                                        , size=i, is.gap=gap.key[i]) )
         beta <- solution[3]
         if( rate.model == "correlated" ){
@@ -466,10 +515,14 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
             solution <- c(solution, fit$solution[3:length(fit$solution)])
             M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
             ## Need to make sure that the format for the output is the same between models.
-            res <- getSiteRatesAutoDiscGamma(phy=phy, X=Xlist, Q=Q, M=M, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)
+            res <- getSiteRatesAutoDiscGamma(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len, edge_mat=edge_mat, parents=parents, root_node=root_node, root_type=root_type, k=ncat, X=Xlist, Q=Q, M=M, beta=beta, n.cores=n.cores)
         }
         if(rate.model == "gamma"){
-            res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
+            res <- loglikGammaSimple_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                     , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                     , root_node=root_node, X = Xlist, Q = Q
+                                     , root_type=root_type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
+            ## res <- loglikGammaSimple(phy=phy, X=Xlist, Q=Q, root.type=root.type, beta=beta, k=ncat, n.cores=n.cores)[[2]]
         }
         if(rate.model == "single.rate"){
             res <- Q
