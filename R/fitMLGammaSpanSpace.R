@@ -50,6 +50,9 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     if( is.null( rownames(data) ) ) stop("data need to have rownames as the species names.")
     match.names <- all( rownames(data) %in% phy$tip.label ) & all( phy$tip.label %in% rownames(data) )
     if( !match.names ) stop("Secies names do not match between data and phylogeny!")
+    ## Two positions in the trait is not enough for this model:
+    if( ncol(data) < 3 ) warning("Less than 3 positions in the sequence. Maybe not enough information.")
+    if( ncol(data) == 1 ) stop("Cannot work with a sequence of a single position!")
 
     ## If the Q.model = "DEL" then the data need to show at least 1 instance of the gap.char:
     if( Q.model == "DEL" & !any(c(data) == gap.char) ) stop( "Chosen model assumes 'gaps' but symbol in 'gap.char' not found in the data. Change 'gap.char' or chose other model option." )
