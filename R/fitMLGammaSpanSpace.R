@@ -10,10 +10,12 @@
 ##' @param add.invar TRUE or FALSE. Whether to compute transition rates for the invariant sites or not.
 ##' @param poly.key a named list. Each element is a vector with the states represented by the polymorphism symbol. Names of the list need to match the polymorphism symbols in the data.
 ##' @param ncat categories for the gamma function
+##' @param init.M whether the initial state for the M matrix (for the correlated model) should have starting state equal to the gamma model (i.e., equal probabilities for all the transitions).
 ##' @param bounds a numeric vector of length 2 with the lower and upper bonds for the rates
 ##' @param state.space can be "max.div", "site.div" or a numeric (length of 1 or equal to the number of columns in the data). The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.
 ##' @param gap.char the character identified as the gap in the data. Default: "-"
 ##' @param opts the list of options for nloptr. If null it will use the default parameters.
+##' @param search.global whether to perform a global MLE search before the local MLE search. Default is TRUE.
 ##' @param init 
 ##' @param verbose 
 ##' @param n.cores 
@@ -23,7 +25,7 @@
 ##' @importFrom ape reorder.phylo
 ##' @export
 ##' @author daniel
-fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, init = NULL, verbose = TRUE, n.cores = 1){
+fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, init.M = FALSE, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, search.global = TRUE, init = NULL, verbose = TRUE, n.cores = 1){
     ## At the moment the model assumes that all transitions have the same rate.
     ## So just a single rate is estimated for each of the transition matrices. Of course, this rate is changed by the gamma distribution.
     ## This is a fork of the original function.
@@ -133,6 +135,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         }
         if(state.space == "site.div"){
             nstates <- nstates
+            if( add.invar ) stop("Invariant sites cannot be included if state.space is 'site.div'.")
         }
     } else if( is.numeric( state.space ) ){
         if( !length( state.space ) == 1 & !length( state.space ) == length(nstates) ){
@@ -198,6 +201,9 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
                     return( Inf ) ## NLOPT is minimizying the function!
                 }
+                if( any(c(M) == 0) ){ ## Not allow for probabilities of 0.
+                    return( Inf )
+                }                
                 ## Loglik function for the model.
                 lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
                                             , edge_len=edge_len, edge_mat=edge_mat, parents=parents
@@ -286,6 +292,9 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
                     return( Inf )
                 }
+                if( any( c(M) == 0 ) ){ ## Do not allow for probability of 0.
+                    return( Inf )
+                }               
                 
                 ## Loglik function for the model.
                 lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
@@ -360,7 +369,9 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         M.vec.size <- sum( upper.tri( diag(ncat), diag = TRUE ) )
         ## Make nlopt bounds vectors.
         ## The M matrix has always bound between 0 and 1. (Need to change the call to the function)
-        log_lb <- c( log( bounds[1] ), beta.bounds[1], rep(0, times=M.vec.size) )
+        ## Using here a lower bound for the probability very small but > 0.
+        ## This might enhance the behavior of the model.
+        log_lb <- c( log( bounds[1] ), beta.bounds[1], rep(0.000001, times=M.vec.size) )
         log_ub <- c( log( bounds[2] ), beta.bounds[2], rep(1, times=M.vec.size) )
     }
     if( rate.model == "gamma"){
@@ -386,11 +397,16 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     ## Here the user can provide a custom start.
     if( is.null(init) ){
         if( rate.model == "correlated" ){
-            ## Sample for a good starting value:
-            M <- 0
-            while( sum(M) < 0.001 ){
-                init.pars.M <- runif(M.vec.size, min=0, max=1)
-                M <- makeSymDTMCMatrix(size = ncat, pars = init.pars.M)
+            if( init.M ){
+                ## Start with an equal probability M matrix.
+                init.pars.M <- rep(1/ncat, times = M.vec.size)
+            } else{
+                ## Sample for a good starting value:
+                M <- 0
+                while( sum(M) < 0.001 ){
+                    init.pars.M <- runif(M.vec.size, min=0.0001, max=1)
+                    M <- makeSymDTMCMatrix(size = ncat, pars = init.pars.M)
+                }
             }
             init.pars <- c( log(runif(1, min=bounds[1], max=bounds[2]))
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2])
@@ -450,31 +466,32 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     ## Register search time.
     start.time <- Sys.time()
     if( verbose ){
-        print( "Starting global MLE search. (First pass)" )
-        global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
-                       , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
-                       , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
-                       , k=ncat, root_type=root_type, gap.key=gap.key)
-        print( "Global search finished." )
-        ## print( paste("Log-lik ", -global$objective
-        ##            , "; rate ", exp(global$solution[1])
-        ##            , "; alpha ", global$solution[2], collapse="") )
+        if( search.global ){
+            print( "Starting global MLE search. (First pass)" )
+            global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
+                           , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
+                           , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
+                           , k=ncat, root_type=root_type, gap.key=gap.key)
+            print( "Global search finished." )
+            init.pars <- global$solution
+        }
         print( "Starting local MLE search. (Second pass)" )
-        fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
+        fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
                        , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
                        , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
                        , k=ncat, root_type=root_type, gap.key=gap.key)
         print( "Local search solution:" )
-        ## print( paste("Log-lik ", -fit$objective
-        ##            , "; rate ", exp(fit$solution[1])
-        ##            , "; alpha ", fit$solution[2], collapse="") )
+
         print( "Reconstructing site-wise Q matrices." )
     } else{
-        global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
-                       , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
-                       , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
-                       , k=ncat, root_type=root_type, gap.key=gap.key)
-        fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
+        if( search.global ){
+            global <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=global.opts
+                           , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
+                           , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
+                           , k=ncat, root_type=root_type, gap.key=gap.key)
+            init.pars <- global$solution
+        }
+        fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
                        , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
                        , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
                        , k=ncat, root_type=root_type, gap.key=gap.key)
@@ -584,38 +601,4 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
               , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time
               , Q.model=Q.model, rate.model=rate.model)
     return( out )
-}
-    
-    
-
-makeSymDTMCMatrix <- function(size, pars){
-    ## Function to generate a Discrete Time Markov Matrix from a vector of parameters.
-    ## Will return an empty matrix if the matrix is ill-conditioned.
-    
-    mat <- matrix(0, nrow = size, ncol = size)
-    pars.number <- size + sum( upper.tri(mat) )
-    lower.id <- lower.tri(mat)
-    
-    start <- 1
-    end <- size
-    mat[1,1:size] <- pars[start:end]
-    mat[1,1:size] <- mat[1,1:size] / sum(mat[1,1:size])
-    start <- end+1
-    end <- start+(size-2)
-    for( i in 2:(size) ){
-        mat[lower.id] <- t(mat)[lower.id] ## Update lower.tri
-        mat[i,i:size] <- pars[start:end]
-        mat[i,i:size] <- ( mat[i,i:size] * (1 - sum(mat[i,1:(i-1)])) ) / sum( mat[i,i:size] )
-        start <- end+1
-        end <- start+(size-i-1)
-    }
-    ## Return mat or return an empty matrix.
-    ## If empty matrix then I can set logLik to -Inf.
-    ## This will equivalent to rejecting a step into a parameter that is invalid.
-    ## A improvement to this would be to find a way to sample this matrix without error.
-    if( any( mat < 0 ) | any( apply(mat, 1, sum) + 1 != 2 ) ){
-        return( mat <- matrix(0, nrow = size, ncol = size) )
-    } else{    
-        return(mat)
-    }    
 }

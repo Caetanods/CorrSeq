@@ -6,8 +6,9 @@
 \usage{
 fitMLGammaSpanSpace(data, phy, Q.model = "ER", rate.model = "gamma",
   root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4,
-  bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL,
-  init = NULL, verbose = TRUE, n.cores = 1)
+  init.M = FALSE, bounds = NULL, state.space = "max.div",
+  gap.char = "-", opts = NULL, search.global = TRUE, init = NULL,
+  verbose = TRUE, n.cores = 1)
 }
 \arguments{
 \item{data}{matrix with species names as rownames.}
@@ -26,6 +27,8 @@ fitMLGammaSpanSpace(data, phy, Q.model = "ER", rate.model = "gamma",
 
 \item{ncat}{categories for the gamma function}
 
+\item{init.M}{whether the initial state for the M matrix (for the correlated model) should have starting state equal to the gamma model (i.e., equal probabilities for all the transitions).}
+
 \item{bounds}{a numeric vector of length 2 with the lower and upper bonds for the rates}
 
 \item{state.space}{can be "max.div", "site.div" or a numeric (length of 1 or equal to the number of columns in the data). The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.}
@@ -33,6 +36,8 @@ fitMLGammaSpanSpace(data, phy, Q.model = "ER", rate.model = "gamma",
 \item{gap.char}{the character identified as the gap in the data. Default: "-"}
 
 \item{opts}{the list of options for nloptr. If null it will use the default parameters.}
+
+\item{search.global}{whether to perform a global MLE search before the local MLE search. Default is TRUE.}
 
 \item{init}{}
 
