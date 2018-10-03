@@ -206,9 +206,10 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 if( !is.matrix(M) ){ ## A single rate category!
                     ## The likelihood of the model considering only the last category.
                     ## Because alpha is such that categories 1 to k-1 are empty (width of 0).
+                    scaledQ <- lapply(Q, function(x) x * gamma.rates[k])
                     lik <- loglikSingleRate_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
                                             , edge_len=edge_len, edge_mat=edge_mat, parents=parents
-                                            , root_node=root_node, X = data, Q = Q*gamma.rates[k]
+                                            , root_node=root_node, X = data, Q = scaledQ
                                             , root_type=root_type, n.cores=n.cores)
                 } else{
                     ## Check if M is a doubly stochastic matrix. Otherwise, reject.
@@ -483,8 +484,6 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                        , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
                        , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
                        , k=ncat, root_type=root_type, gap.key=gap.key)
-        print( "Local search solution:" )
-
         print( "Reconstructing site-wise Q matrices." )
     } else{
         if( search.global ){
