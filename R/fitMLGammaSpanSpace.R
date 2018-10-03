@@ -186,31 +186,42 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         if( rate.model == "correlated" ){
             wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of variable length.
-                ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta, obj[3:n] = the elements of the M matrix (for the autocorrelation).
+                ## obj[1] = Q[1,2] (shared for all sites), obj[2] = beta, obj[3] = correlation for the bivariate Gamma.
                 ## phy = phylogeny
                 ## data = data matrix.
                 ## nstates = number of states in each of the sites in the data (now this is a vector).
                 ## gap.key is ignored in this case.
                 x <- exp(obj[1])
                 beta <- obj[2]
+                rho <- obj[3] ## This is the correlation of the bivariate Gamma.
                 ## Will need to be a list.
-                Q <- lapply(n_states, function(i) make.Q.list(rate=x[1], size=i) )
+                Q <- lapply(n_states, function(i) make.Q.list(rate=x, size=i) )
+                
                 ## The M matrix for the autocorrelation:
-                ## This is a probability matrix and is different from a Q matrix:
-                M <- makeSymDTMCMatrix(size = k, obj[3:length(obj)])
-                if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
-                    return( Inf ) ## NLOPT is minimizying the function!
-                }
-                if( any(c(M) == 0) ){ ## Not allow for probabilities of 0.
-                    return( Inf )
-                }                
-                ## Loglik function for the model.
-                lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                cat <- qgamma((1:(k - 1))/k, shape = beta, rate = beta)
+                cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
+                ## alpha and beta are the same thing.
+                M <- computeM(rate_cat = cat, alpha = beta, rho = rho, k = k)
+                gamma.rates <- discreteGamma(shape = beta, ncats = k) ## These are the k rates.
+                if( !is.matrix(M) ){ ## A single rate category!
+                    ## The likelihood of the model considering only the last category.
+                    ## Because alpha is such that categories 1 to k-1 are empty (width of 0).
+                    lik <- loglikSingleRate_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
                                             , edge_len=edge_len, edge_mat=edge_mat, parents=parents
-                                            , root_node=root_node, X = data, Q = Q, M = M
-                                            , root_type=root_type, beta=beta, k=k, n.cores=n.cores)
-                ## lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type
-                ##                          , beta=beta, k=k, n.cores=n.cores)
+                                            , root_node=root_node, X = data, Q = Q*gamma.rates[k]
+                                            , root_type=root_type, n.cores=n.cores)
+                } else{
+                    ## Check if M is a doubly stochastic matrix. Otherwise, reject.
+                    if( any(round(rowSums(M), digits=10) != 1.0) | any(round(colSums(M), digits=10) != 1.0) ){
+                        ## Bad M matrix, this will happen sometimes. Return bad lik.
+                        return( Inf )
+                    }
+                    ## Loglik function for the model.
+                    lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                               , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                               , root_node=root_node, X = data, Q = Q, M = M
+                                               , root_type=root_type, beta=beta, k=k, n.cores=n.cores)
+                }
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
@@ -273,35 +284,41 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         if( rate.model == "correlated" ){
             wrapLogLik <- function(obj, n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, data, k, root_type, gap.key){
                 ## obj is a vector of 3 parameters.
-                ## obj[1:2] = has the rate for the observed states obj[1] and for the deletion and insertions obj[2]
-                ## obj[3] = the beta rate (for the Gamma function).
-                ## obj[4:n] = the elements of the M matrix (for the autocorrelation).
+                ## obj[1] = global rate, obj[2] = rate for deletions, obj[3] = the shape for the Gamma, obj[4] the correlation for the bivariate Gamma.
                 ## phy = phylogeny
                 ## data = data matrix.
                 ## nstates = number of states in each of the sites in the data (now this is a vector).
                 x.obs <- exp(obj[1])
                 x.del <- exp(obj[2])
                 beta <- obj[3]
+                rho <- obj[4]
                 ## Will need to be a list.
                 Q <- lapply(n_states, function(i) make.Q.list.DEL(global.rate=x.obs, del.rate=x.del, size=i
-                                                               , is.gap=gap.key[i])
+                                                                , is.gap=gap.key[i])
                             )
                 ## The M matrix for the autocorrelation:
-                ## This is a probability matrix and is different from a Q matrix:
-                M <- makeSymDTMCMatrix(size = k, obj[3:length(obj)])
-                if( sum(M) < 0.001 ){ ## Protect from bad behavior in sum function.
-                    return( Inf )
+                cat <- qgamma((1:(k - 1))/k, shape = beta, rate = beta)
+                cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
+                M <- computeM(rate_cat = cat, alpha = beta, rho = rho, k = k)
+                gamma.rates <- discreteGamma(shape = beta, ncats = k)
+                if( !is.matrix(M) ){ ## A single rate category!
+                    ## The likelihood of the model considering only the last category.
+                    lik <- loglikSingleRate_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                            , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                            , root_node=root_node, X = data, Q = Q*gamma.rates[k]
+                                            , root_type=root_type, n.cores=n.cores)
+                } else{
+                    ## Check if M is a doubly stochastic matrix. Otherwise, reject.
+                    if( any(round(rowSums(M), digits=10) != 1.0) | any(round(colSums(M), digits=10) != 1.0) ){
+                        ## Bad M matrix, this will happen sometimes. Return bad lik.
+                        return( Inf )
+                    }
+                    ## Loglik function for the model.
+                    lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                               , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                               , root_node=root_node, X = data, Q = Q, M = M
+                                               , root_type=root_type, beta=beta, k=k, n.cores=n.cores)
                 }
-                if( any( c(M) == 0 ) ){ ## Do not allow for probability of 0.
-                    return( Inf )
-                }               
-                
-                ## Loglik function for the model.
-                lik <- logLikAutoDiscGamma_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
-                                           , edge_len=edge_len, edge_mat=edge_mat, parents=parents
-                                           , root_node=root_node, X = data, Q = Q, M = M
-                                           , root_type=root_type, beta=beta, k=k, n.cores=n.cores)
-                ## lik <- logLikAutoDiscGamma(phy=phy, X=data, Q=Q, M=M, root.type=root.type, beta=beta, k=k, n.cores=n.cores)
                 return( -lik ) ## Remember that NLOPT is minimizying the function!
             }
         }
@@ -361,22 +378,17 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     ## The bound is the same for each of the sites.
     if( rate.model == "correlated" ){
         ## Set bounds of 0 to a very small number.
-        if( bounds[1] == 0 ){
+        if( round(bounds[1], digits = 10) == 0.0 ){
             ## Cannot be log(0)
             bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
         }
-        ## Finde the size of the M matrix
-        M.vec.size <- sum( upper.tri( diag(ncat), diag = TRUE ) )
-        ## Make nlopt bounds vectors.
-        ## The M matrix has always bound between 0 and 1. (Need to change the call to the function)
-        ## Using here a lower bound for the probability very small but > 0.
-        ## This might enhance the behavior of the model.
-        log_lb <- c( log( bounds[1] ), beta.bounds[1], rep(0.000001, times=M.vec.size) )
-        log_ub <- c( log( bounds[2] ), beta.bounds[2], rep(1, times=M.vec.size) )
+        ## The third parameter is a correlation
+        log_lb <- c( log( bounds[1] ), beta.bounds[1], 0 )
+        log_ub <- c( log( bounds[2] ), beta.bounds[2], 1 )
     }
     if( rate.model == "gamma"){
         ## Log the bounds in order to search in log space.
-        if( bounds[1] == 0 ){
+        if( round(bounds[1], digits = 10) == 0.0 ){
             ## Cannot be log(0)
             bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
         }
@@ -385,7 +397,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     }
     if( rate.model == "single.rate" ){
         ## Log the bounds in order to search in log space.
-        if( bounds[1] == 0 ){
+        if( round(bounds[1], digits = 10) == 0.0 ){
             ## Cannot be log(0)
             bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
         }
@@ -396,34 +408,25 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     ## Sample the initial parameters for the search.
     ## Here the user can provide a custom start.
     if( is.null(init) ){
-        if( rate.model == "correlated" ){
-            if( init.M ){
-                ## Start with an equal probability M matrix.
-                init.pars.M <- rep(1/ncat, times = M.vec.size)
-            } else{
-                ## Sample for a good starting value:
-                M <- 0
-                while( sum(M) < 0.001 ){
-                    init.pars.M <- runif(M.vec.size, min=0.0001, max=1)
-                    M <- makeSymDTMCMatrix(size = ncat, pars = init.pars.M)
-                }
-            }
-            init.pars <- c( log(runif(1, min=bounds[1], max=bounds[2]))
-                         , runif(1, min=beta.bounds[1], max=beta.bounds[2])
-                         , init.pars.M )
-        }
         if(rate.model == "gamma"){
             init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2]) )
+        }
+        if(rate.model == "correlated"){
+            init.rho <- ifelse(test=init.M, yes=0.5, no=runif(1, min=0, max=1) )
+            init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
+                         , runif(1, min=beta.bounds[1], max=beta.bounds[2])
+                         , init.rho ) ## The correlation 'rho'
         }
         if(rate.model == "single.rate"){
             init.pars <- log(runif(1, min=bounds[1], max=bounds[2]))
         }            
     } else{
         if( rate.model == "correlated" ){
-            if( !length( init ) == M.vec.size+2 ) stop("Wrong number of init parameters.")
-            if( any(init[1] < bounds[1]) | any(init[1] > bounds[2]) ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
-            if( any(init[2] < beta.bounds[1]) | any(init[2] > beta.bounds[2]) ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
+            if( !length( init ) == 3 ) stop("Wrong number of init parameters.")
+            if( init[1] < bounds[1] | init[1] > bounds[2] ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
+            if( init[2] < beta.bounds[1] | init[2] > beta.bounds[2] ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
+            if( init[3] > 1.0 | init[3] < 0.0 ) stop( paste0("Correlation (init[3]) need to be between 0 and 1.") )
             init[1] <- log( init[1] ) ## Tranform the first element. Keep the rest.
             init.pars <- init
         }
@@ -509,10 +512,20 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         beta <- solution[2]
         if( rate.model == "correlated" ){
             ## In this case need to append to the solution object.
-            solution <- c(solution, fit$solution[3:length(fit$solution)])
-            M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
+            gamma.rates <- discreteGamma(shape = solution[2], ncats = ncat) ## The gamma rates.
+            solution <- fit$solution ## Size of 3
+            cat <- qgamma((1:(ncat-1))/ncat, shape = solution[2], rate = solution[2])
+            cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
+            M <- computeM(rate_cat=cat, alpha = solution[2], rho=solution[3], k=ncat)
             ## Need to make sure that the format for the output is the same between models.
-            res <- getSiteRatesAutoDiscGamma(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len, edge_mat=edge_mat, parents=parents, root_node=root_node, root_type=root_type, k=ncat, X=Xlist, Q=Q, M=M, beta=beta, n.cores=n.cores)
+            if( !is.matrix(M) ){ ## A single rate category!
+                res <- Q * gamma.rates[ncat] ## In this case only the last category matters.
+            } else{
+                res <- getSiteRatesAutoDiscGamma(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                               , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                               , root_node=root_node, root_type=root_type, k=ncat, X=Xlist
+                                               , Q=Q, M=M, beta=beta, n.cores=n.cores)
+            }
         }
         if(rate.model == "gamma"){
             res <- loglikGammaSimple_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
@@ -532,10 +545,18 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         beta <- solution[3]
         if( rate.model == "correlated" ){
             ## Need to append the rest of the parameters to the solution object.
-            solution <- c(solution, fit$solution[3:length(fit$solution)])
-            M <- makeSymDTMCMatrix(size = ncat, pars = solution[3:length(solution)] )
+            gamma.rates <- discreteGamma(shape = solution[3], ncats = ncat)
+            solution <- c(solution, fit$solution[4]) ## Adds the correlation.
+            cat <- qgamma((1:(ncat-1))/ncat, shape = solution[3], rate = solution[3])
+            cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
+            ## This final matrix can have NaNs. But this is not an issue.
+            M <- computeM(rate_cat=cat, alpha = solution[3], rho=solution[4], k=ncat)
             ## Need to make sure that the format for the output is the same between models.
-            res <- getSiteRatesAutoDiscGamma(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len, edge_mat=edge_mat, parents=parents, root_node=root_node, root_type=root_type, k=ncat, X=Xlist, Q=Q, M=M, beta=beta, n.cores=n.cores)
+            if( !is.matrix(M) ){ ## A single rate category!
+                res <- Q * gamma.rates[ncat] ## In this case only the last category matters.
+            } else{
+                res <- getSiteRatesAutoDiscGamma(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len, edge_mat=edge_mat, parents=parents, root_node=root_node, root_type=root_type, k=ncat, X=Xlist, Q=Q, M=M, beta=beta, n.cores=n.cores)
+            }
         }
         if(rate.model == "gamma"){
             res <- loglikGammaSimple_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
@@ -573,10 +594,11 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
 
     ## Some parameters of the model depend on the choice of model estimate.
     del.rate <- NULL
+    corr <- NULL
+    auto.matrix <- NULL
     if( rate.model == "correlated" ){
         auto.matrix <- M
-    } else{
-        auto.matrix <- NULL
+        corr <- solution[length(solution)] ## Last in the vector.
     }
     if( rate.model == "single.rate" ){
         start.par <- exp(init.pars[1])
@@ -596,7 +618,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         }
     }
     
-    out <- list( log.lik=-fit$objective, Q=res, global.rate=solution[1], auto.matrix=auto.matrix
+    out <- list( log.lik=-fit$objective, Q=res, global.rate=solution[1], corr=corr, auto.matrix=auto.matrix
               , del.rate=del.rate, alpha=alpha, start.par=start.par, nlopt.global.search=global.opts
               , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time
               , Q.model=Q.model, rate.model=rate.model)

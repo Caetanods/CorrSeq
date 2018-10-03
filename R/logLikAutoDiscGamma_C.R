@@ -1,27 +1,22 @@
-getLastUnit <- function(gamma.lik, M, i, k, n, keep){
+## The block of functions below will assume that there is no element in M == 0.0 . The issue is that log(0.0) will blow up the code. Make sure to protect for that case in the calls for these functions.
+
+getLastUnit <- function(gamma.lik, M, i, n){
     ## This function computes a minimum independent unit in the recursive algorithm.
     ## gamma.lik: the list of the site likelihoods.
     ## M: the probability matrix.
     ## i: the rate category of the n-1 neighbor site.
     ## n: the current site.
-    ## keep: a matrix with elements to keep
-
-    ## The keep matrix protects the likelihood when elements of M are 0.
-    M.vec <- M[i,keep[i,]]
-    lik.vec <- gamma.lik[[n]][keep[i,]]
-    return( logSumExp( log(M.vec) + lik.vec ) )
+    return( logSumExp( log(M[i,]) + gamma.lik[[n]] ) )
 }
 
-getIntUnit <- function(gamma.lik, M, i, k, n, left_unit, keep){
+getIntUnit <- function(gamma.lik, M, i, n, left_unit, keep = NULL){
     ## This function computes a minimum independent unit given the unit for the site on the left.
     ## gamma.lik: the list of the site likelihoods.
     ## M: the probability matrix.
     ## i: the rate category of the n-1 neighbor site.
     ## n: the current site.
     ## left_unit: the unit computed for the site on the left.
-    M.vec <- M[i,keep[i,]]
-    lik.vec <- gamma.lik[[n]][keep[i,]]
-    return( logSumExp( log(M.vec) + lik.vec + left_unit[keep[i,]] ) )
+    return( logSumExp( log(M[i,]) + gamma.lik[[n]] + left_unit ) )
 }
 
 ## And so on, until the first site:
@@ -62,27 +57,29 @@ logLikAutoDiscGamma_C <- function(n_nodes, n_tips, n_states, edge_len, edge_mat,
     ## root_type: 0 = equal probabilities and 1: madfitz // Derived from the original argument that is a character type.
     
     ## Here the rates are autocorrelated among the sites using the method proposed by Yang (1995).
-
-    ## These rates CANNOT contain zero. If they are 0, then break and return error.
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
 
-    ## Keep track of 0 probabilities in the M matrix:
-    keep <- is.finite( log( M ) )
+    ## The likelihood for the model can be problematic to compute if transitions on the M matrix are absolute 0.0 . So here we can change the 0.0 values to a very small value.
+    M[ round(M, digits = 10) == 0.0 ] <- .Machine$double.eps
+    
+    ## Need to match the rates with the dimension of the M matrix:
+    ## We know that, because this is a Gamma distribution, that if rates are collapsed, they are the ones closer to 0.
+    ## We are filtering before, so 'ncol(M)' is at least 2.
+    effective_rates <- ncol(M)
+    gamma.rates <- gamma.rates[ (k+1-effective_rates):k ]
     
     ## This computes the likelihood for the sites given all the rate categories.
-    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) seqtraits:::logLikMk_C(n_nodes = n_nodes, n_tips = n_tips, n_states = n_states[site], edge_len = edge_len, edge_mat = edge_mat, parents = parents, X = X[[site]], Q = r*Q[[site]], root_node = root_node, root_type = root_type) ), mc.cores = n.cores )
-    ## gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) ), mc.cores = n.cores )
+    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) seqtraits:::logLikMk_C(n_nodes = n_nodes, n_tips = n_tips, n_states = n_states[site], edge_len = edge_len, edge_mat = edge_mat, parents = parents, X = X[[site]], Q = r*Q[[site]], root_node = root_node, root_type = root_type) ), mc.cores = n.cores)
 
     ## Store number of sites
     nsites <- length(X)
-    N_unit <- sapply(1:k, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, k=k
-                                                , n=nsites, keep=keep)) ## Last site.
+    N_unit <- sapply(1:effective_rates, function(i) getLastUnit(gamma.lik=gamma.lik, M=M, i=i, n=nsites)) ## Last site.
 
     lik_unit <- N_unit ## Start the loop.
     for( site in (nsites-1):2){ ## Next to last up to the second site.
         ## Loop will compute the cumulative probabilites across the sites using the recursive algorithm.
-        lik_unit <- sapply(1:k, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i, k=k
-                                                     , n=site, left_unit=lik_unit, keep=keep))
+        lik_unit <- sapply(1:effective_rates, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i
+                                                     , n=site, left_unit=lik_unit))
     }
 
     ## The final sum is the likelihood for the model.    

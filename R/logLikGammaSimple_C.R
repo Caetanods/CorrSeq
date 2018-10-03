@@ -32,10 +32,9 @@ loglikGammaSimple_C <- function(n_nodes, n_tips, n_states, edge_len, edge_mat, p
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
     ## Need to protect if any of the rates has 0 value. Showing warning message here.
     ## Rate of 0 will set the likelihood to 0. So we can just skip it.
-    if( any(gamma.rates <= 0) ) warning("Gamma rate category is 0 or negative.")
-    gamma.rates <- gamma.rates[!gamma.rates == 0]
+    gamma.rates <- gamma.rates[!round(gamma.rates, digits=20) == 0] ## The strict test with 0.0 will never trigger.
     ## The code here is parallel on the number of sites.
-        gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) seqtraits:::logLikMk_C(n_nodes = n_nodes, n_tips = n_tips, n_states = n_states[site], edge_len = edge_len, edge_mat = edge_mat, parents = parents, X = X[[site]], Q = r*Q[[site]], root_node = root_node, root_type = root_type) )
+    gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) seqtraits:::logLikMk_C(n_nodes = n_nodes, n_tips = n_tips, n_states = n_states[site], edge_len = edge_len, edge_mat = edge_mat, parents = parents, X = X[[site]], Q = r*Q[[site]], root_node = root_node, root_type = root_type) )
                                   , mc.cores = n.cores )
     ## gamma.lik <- parallel::mclapply(1:length(X), function(site) sapply(gamma.rates, function(r) logLikMk(phy, X=X[[site]], Q=r*Q[[site]], root.type=root.type ) )
     ##                               , mc.cores = n.cores )
