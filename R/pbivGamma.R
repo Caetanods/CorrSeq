@@ -1,3 +1,16 @@
+##' Compute the CDF for a bivariate Gamma distribution.
+##'
+##' CDF for the bivariate Gamma.
+##' @title Bivariate Gamma CDF
+##' @param x 
+##' @param y 
+##' @param alpha 
+##' @param corr 
+##' @param log.p 
+##' @return density
+##' @author daniel
+##' @noRd
+##' @importFrom pbivnorm pbivnorm
 pbivGamma <- function(x, y, alpha, corr, log.p=TRUE){
     ## Compute the CDF for a bivariate Gamma distribution.
     ## This follows Yang, 1995 and the approach described in Song, 2000 which relies on the copula of a Gaussian distribution to the Gamma in order to compute the CDF.
@@ -8,7 +21,7 @@ pbivGamma <- function(x, y, alpha, corr, log.p=TRUE){
     normcdf <- qnorm(cdf) ## Original code do some bound opperation to protect here.
     
     ## calculate copula contribution to log-PDF    
-    res.copula.add <- log( pbivnorm::pbivnorm(x = normcdf[1], y = normcdf[2], rho = corr) ) ## Not in log.
+    res.copula.add <- log( pbivnorm(x = normcdf[1], y = normcdf[2], rho = corr) ) ## Not in log.
     res.copula.sub <- sum( pnorm(normcdf, log.p=TRUE) )
     res.copula <- res.copula.add - res.copula.sub ## Division of the probabilities.
     
