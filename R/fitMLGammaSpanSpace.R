@@ -51,7 +51,7 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     ## Consider adding step to organize the species names in the data following the phy names.
     if( is.null( rownames(data) ) ) stop("data need to have rownames as the species names.")
     match.names <- all( rownames(data) %in% phy$tip.label ) & all( phy$tip.label %in% rownames(data) )
-    if( !match.names ) stop("Secies names do not match between data and phylogeny!")
+    if( !match.names ) stop("Species names do not match between data and phylogeny!")
     ## Two positions in the trait is not enough for this model:
     if( ncol(data) < 3 ) warning("Less than 3 positions in the sequence. Maybe not enough information.")
     if( ncol(data) == 1 ) stop("Cannot work with a sequence of a single position!")
@@ -74,12 +74,22 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
 
     if( !add.invar ){
         ## Check for invariant sites. Mark these, avoid estimation.
-        has.invar <- any( apply(data, 2, function(x) length(unique(x)) == 1) )
-        if( has.invar ){
-            print("Data contain invariant positions. Returning 'invariant' as the transition matrix for these positions.")
+        ## This check needs to be expanded for the case of polymorphisms.
+        ## The idea is that if a polymorphism would cause a site to be invariant, then there is strong evidence to do so. We will only "collapse" the site to invariant if the number of polymorphisms is low, lower than 10% of the sites.
+        if( !is.null(poly.key) ){
+            ## Check if any is invariant:
+            which.invar <- apply(data, 2, function(x) get.invar(x = x, poly.key = poly.key) )
+        } else{
             which.invar <- apply(data, 2, function(x) length(unique(x)) == 1)
-            data <- data[,!which.invar]
         }
+        
+        if( any(which.invar) ){
+            print("Data contain invariant positions. Returning 'invariant' as the transition matrix for these positions.")
+            data <- data[,!which.invar]
+            has.invar <- TRUE ## Flag used downstream.
+        } else{
+            has.invar <- FALSE ## Flag used downstream.
+        }        
     } else{
         ## Create 'has.invar' as FALSE.
         has.invar <- FALSE
@@ -93,25 +103,52 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     nstates <- rep(0, times=nsites) ## Number of observed states in each site.
     gap.key <- rep(FALSE, times=nsites) ## The key for sites with gaps
     Xlist <- list() ## The list of matrices to use in the likelihood.
-    
+
+    ## When making the matrix of the data below we need to take care with cases of polymorphic states.
+    ## Sometimes the polymorphic state will be "alone" in the position.
     for(i in 1:nsites){
-        site.div <- unique(data[,i])
+        site.obs <- unique(data[,i])
+        check.poly <- FALSE ## This is FALSE by default.
         if( !is.null(poly.key) ){
-            is.poly <- site.div %in% names(poly.key) ## The symbol(s) for polymorphism.
-            site.poly <- site.div[is.poly] ## The poly symbols in this site.
-            site.div <- site.div[!is.poly] ## The site diversity without polymorphism.
+            site.div <- c()
+            site.poly <- c()
+            for( z in 1:length( site.obs ) ){
+                is.poly <- site.obs[z] %in% names(poly.key) ## The symbol(s) for polymorphism.
+                if( is.poly ){
+                    ## Check if can be translated.
+                    trans.poly <- poly.key[[ names(poly.key) == site.obs[z] ]]
+                    keep.poly <- any( site.obs %in% trans.poly )
+                    if( keep.poly ){
+                        ## Add to the polymorphic vector of states.
+                        site.poly <- c(site.poly, site.obs[z])
+                    } else{
+                        ## Add to the vector of fixed states.
+                        ## This is because we cannot translate it.
+                        site.div <- c(site.div, site.obs[z])
+                    }
+                } else{
+                    ## Not polymorphic.
+                    site.div <- c(site.div, site.obs[z])
+                }
+            }
+            ## If after checking for translation the vector of polymorphisms is empty, then set flag to ignore polymorphic states for this site.
+            if( length( site.poly ) > 0 ){
+                check.poly <- TRUE
+            }
         }
+        
         is.gap <- site.div == gap.char ## The symbol for a gap.
         gap.key[i] <- any(is.gap)
         order.site.div <- c(site.div[is.gap], site.div[!is.gap])
         nstates[i] <- length( order.site.div )
         ## Don't need to translate states to numbers. Can work with the symbols.
         site.mat <- matrix(0, ncol = length(order.site.div), nrow = nrow(data))
-        if( !is.null(poly.key) ){ ## Need to check for polymorphic states.
+        if( !is.null(poly.key) & check.poly ){ ## Need to check for polymorphic states.
             for(j in 1:length(data[,i])){
                 if( data[j,i] %in% names(poly.key) ){
                     poly.set <- poly.key[[ names(poly.key) == data[j,i] ]]
-                    site.mat[j,] <- as.numeric(order.site.div %in% poly.set) ## Set 1 for all states present in this site.
+                    site.mat[j,] <- as.numeric(order.site.div %in% poly.set)
+                    ## Set 1 for all states present in this site.
                 } else{
                     site.mat[j,] <- as.numeric( order.site.div == data[j,i] )
                 }
@@ -409,19 +446,41 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
     ## Sample the initial parameters for the search.
     ## Here the user can provide a custom start.
     if( is.null(init) ){
-        if(rate.model == "gamma"){
-            init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
-                         , runif(1, min=beta.bounds[1], max=beta.bounds[2]) )
+        while( TRUE ){
+            print( "Sampling starting state..." )
+            ## Keep sampling starting states until the sampled state returns a viable likelihood.
+            if(rate.model == "gamma"){
+                init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
+                             , runif(1, min=beta.bounds[1], max=beta.bounds[2]) )
+            }
+            if(rate.model == "correlated"){
+                while( TRUE ){
+                    init.rho <- ifelse(test=init.M, yes=0.5, no=runif(1, min=0, max=1) )
+                    init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
+                                 , runif(1, min=beta.bounds[1], max=beta.bounds[2])
+                                 , init.rho ) ## The correlation 'rho'
+                    ## When the model is correlated, then the M matrix need to be a good matrix on the starting point.
+                    ## Need to keep sampling until the starting point is a valid matrix.
+                    cat <- qgamma((1:(ncat-1))/ncat, shape = init.pars[2], rate = init.pars[2])
+                    cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
+                    M_init <- computeM(rate_cat = cat, alpha = init.pars[2], rho = init.rho, k = ncat)
+                    ## If the M matrix is acceptable then keep the initial value, otherwise resample.
+                    if( any(round(rowSums(M_init), digits = 10) == 1) & any(round(colSums(M_init), digits = 10) == 1) ){
+                        break()
+                    }
+                }
+            }
+            if(rate.model == "single.rate"){
+                init.pars <- log(runif(1, min=bounds[1], max=bounds[2]))
+            }
+            start.lik <- wrapLogLik(init.pars, n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                  , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                  , root_node=root_node, data=Xlist, k=ncat, root_type=root_type
+                                  , gap.key=gap.key)
+            if( is.finite( start.lik ) ){
+                break()
+            }
         }
-        if(rate.model == "correlated"){
-            init.rho <- ifelse(test=init.M, yes=0.5, no=runif(1, min=0, max=1) )
-            init.pars <- c(  log(runif(1, min=bounds[1], max=bounds[2]))
-                         , runif(1, min=beta.bounds[1], max=beta.bounds[2])
-                         , init.rho ) ## The correlation 'rho'
-        }
-        if(rate.model == "single.rate"){
-            init.pars <- log(runif(1, min=bounds[1], max=bounds[2]))
-        }            
     } else{
         if( rate.model == "correlated" ){
             if( !length( init ) == 3 ) stop("Wrong number of init parameters.")
@@ -483,7 +542,8 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
         fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts
                        , n_nodes=n_nodes, n_tips=n_tips, n_states=n_states, edge_len=edge_len
                        , edge_mat=edge_mat, parents=parents, root_node=root_node, data=Xlist
-                       , k=ncat, root_type=root_type, gap.key=gap.key)
+                    , k=ncat, root_type=root_type, gap.key=gap.key)
+        ## Check if the MLE estimation returned good results.
         print( "Reconstructing site-wise Q matrices." )
     } else{
         if( search.global ){
@@ -518,7 +578,8 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
             M <- computeM(rate_cat=cat, alpha = solution[2], rho=solution[3], k=ncat)
             ## Need to make sure that the format for the output is the same between models.
             if( !is.matrix(M) ){ ## A single rate category!
-                res <- Q * gamma.rates[ncat] ## In this case only the last category matters.
+                ## In this case only the last category matters.
+                res <- lapply(Q, function(x) x * gamma.rates[ncat])
             } else{
                 res <- getSiteRatesAutoDiscGamma(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
                                                , edge_len=edge_len, edge_mat=edge_mat, parents=parents
@@ -622,4 +683,46 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
               , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time
               , Q.model=Q.model, rate.model=rate.model)
     return( out )
+}
+
+## Define a long convoluted function to test for invariant positions in the presence of polymorphisms.
+get.invar <- function(x, poly.key){
+    ## Function to check if a site is invariant taking into account the existence of polymorphisms.
+    ## This is a long series of conditions.
+    hard.invar <- length( unique(x) ) == 1
+    if( hard.invar ){
+        return( TRUE )
+    }
+    ## Check if 90% of the site is of a single kind.
+    max.prop <- max( table(x) )
+    if( max.prop / length( x ) > 0.9 ){
+        ## Need to check the role of the polymorphic states.
+        has.poly <- any( unique(x) %in% names( poly.key ) )
+        if( !has.poly ){
+            return( FALSE )
+        }
+        ## Check if all non-polymorphic are the same:
+        not.poly <- x[ !x %in% names( poly.key ) ]
+        if( length( unique(not.poly) ) > 1 ){
+            return( FALSE )
+        }                    
+        ## Check if the polymorphisms are less than 10% of the data.
+        poly.pos.prop <- sum(x %in% names( poly.key )) / length( x )
+        if( poly.pos.prop > 0.1 ){
+            ## Too many of these. Better to estimate.
+            return( FALSE )
+        }
+        ## Finally, are all polymorphic sites potentially the same state?
+        not.poly <- unique( x[ !x %in% names( poly.key ) ] )
+        poly.sites <- unique( x[ x %in% names( poly.key ) ] )
+        poly.id <- sapply(poly.sites, function(x) which( x == names( poly.key ) ) )
+        can.collapse <- sapply(poly.id, function(x) not.poly %in% poly.key[[x]] )
+        if( all( can.collapse ) ){
+            return( TRUE )
+        } else{
+            return( FALSE)
+        }        
+    } else{
+        return( FALSE )
+    }
 }
