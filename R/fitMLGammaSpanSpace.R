@@ -341,9 +341,10 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
                 gamma.rates <- discreteGamma(shape = beta, ncats = k)
                 if( !is.matrix(M) ){ ## A single rate category!
                     ## The likelihood of the model considering only the last category.
+                    scaledQ <- lapply(Q, function(x) x * gamma.rates[k])
                     lik <- loglikSingleRate_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
                                             , edge_len=edge_len, edge_mat=edge_mat, parents=parents
-                                            , root_node=root_node, X = data, Q = Q*gamma.rates[k]
+                                            , root_node=root_node, X = data, Q = scaledQ
                                             , root_type=root_type, n.cores=n.cores)
                 } else{
                     ## Check if M is a doubly stochastic matrix. Otherwise, reject.
