@@ -3,6 +3,7 @@
 export(fitMLGammaSpanSpace)
 export(fitMLStateDiversity)
 export(getLogLikMk)
+export(getRates)
 export(getRootMarginal)
 export(readFasta2Matrix)
 export(readMCMC)
