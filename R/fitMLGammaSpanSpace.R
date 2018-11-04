@@ -473,10 +473,19 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
             if(rate.model == "single.rate"){
                 init.pars <- log(runif(1, min=bounds[1], max=bounds[2]))
             }
-            start.lik <- wrapLogLik(init.pars, n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
-                                  , edge_len=edge_len, edge_mat=edge_mat, parents=parents
-                                  , root_node=root_node, data=Xlist, k=ncat, root_type=root_type
-                                  , gap.key=gap.key)
+            if( Q.model == "ER" ){
+                start.lik <- wrapLogLik(init.pars, n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
+                                      , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                      , root_node=root_node, data=Xlist, k=ncat, root_type=root_type
+                                      , gap.key=gap.key)
+            } else{
+                init.pars.check.start <- c(init.pars[1], init.pars)
+                start.lik <- wrapLogLik(init.pars.check.start, n_nodes=n_nodes, n_tips=n_tips
+                                      , n_states=n_states
+                                      , edge_len=edge_len, edge_mat=edge_mat, parents=parents
+                                      , root_node=root_node, data=Xlist, k=ncat, root_type=root_type
+                                      , gap.key=gap.key)
+            }
             if( is.finite( start.lik ) ){
                 break()
             }
