@@ -135,7 +135,10 @@ fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma",
             if( length( site.poly ) > 0 ){
                 check.poly <- TRUE
             }
-        }
+        } else{
+            ## If there is no polymorphic site, then we can just keep the observed site diversity here.
+            site.div <- site.obs
+        }       
         
         is.gap <- site.div == gap.char ## The symbol for a gap.
         gap.key[i] <- any(is.gap)
