@@ -21,6 +21,9 @@ readFasta2Matrix <- function(file){
     spp.id <- c(which(spp.name), length(spp.name))
     seq.id.table <- cbind(spp.id[1:(length(spp.id)-1)]+1, c(spp.id[2:(length(spp.id)-1)]-1, length(spp.name)))
     seq.data <- t( sapply(1:nrow(seq.id.table), function(x) get.seq(X=parsed, a=seq.id.table[x,1], b=seq.id.table[x,2]) ) )
+    ## When the fasta file has empty spaces we need to drop some columns.
+    to.drop <- apply( seq.data, 2, function(x) !all( x == " ") )
+    seq.data <- seq.data[,to.drop]
     rownames( seq.data ) <- species
     colnames( seq.data ) <- paste0("pos", 1:ncol(seq.data))
     return( seq.data )   
