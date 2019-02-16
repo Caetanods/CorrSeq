@@ -30,7 +30,7 @@
 ##' @importFrom ape reorder.phylo
 ##' @export
 ##' @author Daniel Caetano
-fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, init.M = FALSE, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, search.global = TRUE, init = NULL, verbose = TRUE, n.cores = 1){
+fitCorrSeq <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, init.M = FALSE, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, search.global = TRUE, init = NULL, verbose = TRUE, n.cores = 1){
     ## At the moment the model assumes that all transitions have the same rate.
     ## So just a single rate is estimated for each of the transition matrices. Of course, this rate is changed by the gamma distribution.
     ## This is a fork of the original function.

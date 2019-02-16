@@ -4,7 +4,7 @@
 ##'
 ##' This functions will substitute invariant positions for NA when necessary.
 ##'
-##' Please check the help for 'fitMLGammaSpanSpace' for more information.
+##' Please check the help for 'fitCorrSeq' for more information.
 ##' 
 ##' @title Extract rates of evolution from fitted models
 ##' @param x a model fit result.
