@@ -8,7 +8,6 @@
 ##' @param root.type 
 ##' @return Return the loglik for the model.
 ##' @author daniel
-##' @export
 getLogLikMk <- function(phy, data, Q, root.type){
     ## Will get the data as a named vector and transform it to the correct format prior to the computation of the likelihood.
     root.type <- match.arg(root.type, choices=c("madfitz","equal"), several.ok=FALSE)

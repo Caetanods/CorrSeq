@@ -1,12 +1,17 @@
 ##' Extracts and summarize the estimates of rates of evolution from the fitted models.
 ##'
-##' Returns a vector if the model is single rate and a matrix if the model is including different rates for the transitions between states and between the gap states. This functions will substitute invariant positions (which rates were not estimated) for NA.
-##' @title Extract rates of evolution for sequence positions.
+##' Returns a vector if the model has a global rate (i.e., model "ER"). If the estimated model was of type "DEL", this function will return a matrix with the distinct rates for the observed states and between the observed states and gaps.
+##'
+##' This functions will substitute invariant positions for NA when necessary.
+##'
+##' Please check the help for 'fitCorrSeq' for more information.
+##' 
+##' @title Extract rates of evolution from fitted models
 ##' @param x a model fit result.
-##' @param Q.model one of "ER" or "DEL"
-##' @param gap.char the char used to identify gaps.
-##' @return a vector or a matrix
-##' @author daniel
+##' @param Q.model one of "ER" or "DEL". Default is "ER".
+##' @param gap.char the charactaed state used to identify gaps. Default is "-".
+##' @return a vector or a matrix with the evolutionary rates estimated for each sequence position.
+##' @author Daniel Caetano
 ##' @export
 getRates <- function(x, Q.model = "ER", gap.char = "-"){
     ## Gets rates of evolution for the model estimates. Returns a single vector if ER and a matrix with two columns if DEL

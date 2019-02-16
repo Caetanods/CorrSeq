@@ -8,7 +8,7 @@ using namespace Rcpp;
 
 // logLikMk_C
 double logLikMk_C(int n_nodes, int n_tips, int n_states, arma::vec edge_len, arma::mat edge_mat, arma::vec parents, arma::mat X, arma::mat Q, int root_node, int root_type);
-RcppExport SEXP _seqtraits_logLikMk_C(SEXP n_nodesSEXP, SEXP n_tipsSEXP, SEXP n_statesSEXP, SEXP edge_lenSEXP, SEXP edge_matSEXP, SEXP parentsSEXP, SEXP XSEXP, SEXP QSEXP, SEXP root_nodeSEXP, SEXP root_typeSEXP) {
+RcppExport SEXP _CorrSeq_logLikMk_C(SEXP n_nodesSEXP, SEXP n_tipsSEXP, SEXP n_statesSEXP, SEXP edge_lenSEXP, SEXP edge_matSEXP, SEXP parentsSEXP, SEXP XSEXP, SEXP QSEXP, SEXP root_nodeSEXP, SEXP root_typeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -28,11 +28,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_seqtraits_logLikMk_C", (DL_FUNC) &_seqtraits_logLikMk_C, 10},
+    {"_CorrSeq_logLikMk_C", (DL_FUNC) &_CorrSeq_logLikMk_C, 10},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_seqtraits(DllInfo *dll) {
+RcppExport void R_init_CorrSeq(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

@@ -4,13 +4,13 @@ get.seq <- function(X, a, b){
     return( seq.string )
 }
 
-##' Reads a FASTA file of any type and returns a matrix with the species as rows and the sites as columns.
+##' Reads a FASTA file of any type and returns a matrix with the species as rows and the sequence positions as columns.
 ##'
-##' Each site of the FASTA file is transformed into a "character" in the matrix. The function ony works for sequences of the same length (i.e., alignments).
+##' Each site of the FASTA file is transformed into a "character" in the matrix. The function only works for sequences of the same length (i.e., alignments).
 ##' @title Read a FASTA file and returns a matrix
 ##' @param file the FASTA file to be read.
-##' @return a matrix
-##' @author daniel
+##' @return a matrix with the sequence trait
+##' @author Daniel Caetano
 ##' @export
 readFasta2Matrix <- function(file){
     raw.matrix <- read.csv(file = file, as.is = TRUE, header = FALSE)

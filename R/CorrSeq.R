@@ -1,10 +1,10 @@
-#' seqtraits
+#' CorrSeq
 #' 
 #' Estimate rates of evolution for sequence traits.
 #' 
 #' @docType package
 #' @author Daniel Caetano <caetanods1@gmail.com>
-#' @useDynLib seqtraits
+#' @useDynLib CorrSeq
 #' @importFrom Rcpp sourceCpp
-#' @name seqtraits
+#' @name CorrSeq
 NULL  

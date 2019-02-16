@@ -10,14 +10,14 @@ readFasta2Matrix(file)
 \item{file}{the FASTA file to be read.}
 }
 \value{
-a matrix
+a matrix with the sequence trait
 }
 \description{
-Reads a FASTA file of any type and returns a matrix with the species as rows and the sites as columns.
+Reads a FASTA file of any type and returns a matrix with the species as rows and the sequence positions as columns.
 }
 \details{
-Each site of the FASTA file is transformed into a "character" in the matrix. The function ony works for sequences of the same length (i.e., alignments).
+Each site of the FASTA file is transformed into a "character" in the matrix. The function only works for sequences of the same length (i.e., alignments).
 }
 \author{
-daniel
+Daniel Caetano
 }
