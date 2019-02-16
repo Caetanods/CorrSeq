@@ -7,7 +7,6 @@
 ##' @param fit 
 ##' @return A list with the marginal root probabilities.
 ##' @author daniel
-##' @export
 ##' @importFrom expm expm
 ##' @importFrom ape Ntip
 getRootMarginal <- function(phy, data, fit){
