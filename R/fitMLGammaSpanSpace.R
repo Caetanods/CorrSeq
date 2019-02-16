@@ -1,30 +1,35 @@
-##' .. content for \description{} (no empty lines) ..
+##' Function uses the discrete-gamma model of Yang (1994) to estimate variation in rates of evolution independent of sequence position and the auto-discrete-gamma model of Yang (1995) when rates are correlated among sites.
 ##'
-##' .. content for \details{} ..
-##' @title Find the maximum likelihood for the model with the gamma function.
-##' @param data matrix with species names as rownames.
-##' @param phy phylogeny
-##' @param Q.model Possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).
-##' @param rate.model options are "correlated", "gamma", and "single.rate"
-##' @param root.type one of "madfitz", or "equal". Need to extend to accept a observed vector of probabilities.
+##' This function implements the same model as the +G (plus Gamma) model commonly used in molecular evolution. Here we refer to this model as the "gamma" model. The main difference is that here the sequence is studied conditioned on a known phylogeny, where the molecular models are used to estimate the phylogenetic tree.
+##'
+##' In addition, this function implements the not so common auto-discrete-gamma model (Yang 1995) that we refer as the "correlated" model. The function also implements the simplest case when all sequence positions share the same rate of evolution, we refer to this model as the "single.rate" model.
+##'
+##' The "add.invar" parameter controls whether the model will include the estimate for invariant sites. Note that here we are not trying to estimate the branch lenghts of phylogenetic trees. For this reason, the transition rates estimated for the model represent only the sample and not the "overal molecular evolution rate of a lineage". Thus, it is not necessary to include the rate estimate for the invariant sequence positions. Of course, this is a prior decision and rely only on the objectives of the researcher. Changing this option changes the DATA for the analyses and not only the model. So conduct model choice between "add.invar == TRUE" and "add.invar == FALSE" models with care (if at all!).
+##' 
+##' @title Maximum likelihood estimate of evolutionary rates
+##' @param data matrix with species names as rownames and sequence positions as the columns.
+##' @param phy ultrametric phylogeny in ape 'phylo' format.
+##' @param Q.model possible models are "ER" (single global rate) and "DEL" (a global rate for transitions between observed states and another rate for gains and loses of states).
+##' @param rate.model options are "correlated" , "gamma", and "single.rate". See Details below.
+##' @param root.type one of "madfitz", or "equal".
 ##' @param add.invar TRUE or FALSE. Whether to compute transition rates for the invariant sites or not.
 ##' @param poly.key a named list. Each element is a vector with the states represented by the polymorphism symbol. Names of the list need to match the polymorphism symbols in the data.
-##' @param ncat categories for the gamma function
+##' @param ncat categories for the gamma function.
 ##' @param init.M whether the initial state for the M matrix (for the correlated model) should have starting state equal to the gamma model (i.e., equal probabilities for all the transitions).
-##' @param bounds a numeric vector of length 2 with the lower and upper bonds for the rates
+##' @param bounds a numeric vector of length 2 with the lower and upper bonds for the rates.
 ##' @param state.space can be "max.div", "site.div" or a numeric (length of 1 or equal to the number of columns in the data). The size of the state space is equal to the largest observed or equal to the per site state diversity plus the number.
-##' @param gap.char the character identified as the gap in the data. Default: "-"
-##' @param opts the list of options for nloptr. If null it will use the default parameters.
+##' @param gap.char the character to be used as the gap in the data. Default is "-".
+##' @param opts the list of options for nloptr. If NULL it will use the default parameters of this function (not the same as the default for 'nloptr'). See more information in the help page for 'nloptr'.
 ##' @param search.global whether to perform a global MLE search before the local MLE search. Default is TRUE.
-##' @param init 
-##' @param verbose 
-##' @param n.cores 
+##' @param init set the initial parameters for the MLE search.
+##' @param verbose whether to print information to the screen.
+##' @param n.cores number of cores to perform the likelihood evaluation.
 ##' @return A list with the log-likelihood, initial parameters and the parameter values.
 ##' @importFrom nloptr nloptr
 ##' @importFrom expm expm
 ##' @importFrom ape reorder.phylo
 ##' @export
-##' @author daniel
+##' @author Daniel Caetano
 fitMLGammaSpanSpace <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, init.M = FALSE, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, search.global = TRUE, init = NULL, verbose = TRUE, n.cores = 1){
     ## At the moment the model assumes that all transitions have the same rate.
     ## So just a single rate is estimated for each of the transition matrices. Of course, this rate is changed by the gamma distribution.
