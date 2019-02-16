@@ -2,26 +2,30 @@
 % Please edit documentation in R/getRates.R
 \name{getRates}
 \alias{getRates}
-\title{Extract rates of evolution for sequence positions.}
+\title{Extract rates of evolution from fitted models}
 \usage{
 getRates(x, Q.model = "ER", gap.char = "-")
 }
 \arguments{
 \item{x}{a model fit result.}
 
-\item{Q.model}{one of "ER" or "DEL"}
+\item{Q.model}{one of "ER" or "DEL". Default is "ER".}
 
-\item{gap.char}{the char used to identify gaps.}
+\item{gap.char}{the charactaed state used to identify gaps. Default is "-".}
 }
 \value{
-a vector or a matrix
+a vector or a matrix with the evolutionary rates estimated for each sequence position.
 }
 \description{
 Extracts and summarize the estimates of rates of evolution from the fitted models.
 }
 \details{
-Returns a vector if the model is single rate and a matrix if the model is including different rates for the transitions between states and between the gap states. This functions will substitute invariant positions (which rates were not estimated) for NA.
+Returns a vector if the model has a global rate (i.e., model "ER"). If the estimated model was of type "DEL", this function will return a matrix with the distinct rates for the observed states and between the observed states and gaps.
+
+This functions will substitute invariant positions for NA when necessary.
+
+Please check the help for 'fitCorrSeq' for more information.
 }
 \author{
-daniel
+Daniel Caetano
 }
