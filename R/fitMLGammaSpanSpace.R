@@ -699,7 +699,9 @@ fitCorrSeq <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.typ
     out <- list( log.lik=-fit$objective, Q=res, global.rate=solution[1], corr=corr, auto.matrix=auto.matrix
               , del.rate=del.rate, alpha=alpha, start.par=start.par, nlopt.global.search=global.opts
               , nlopt.local.search=local.opts, nlopt.message=fit$message, search.time=total.time
-              , Q.model=Q.model, rate.model=rate.model)
+              , Q.model=Q.model, rate.model=rate.model, gap.char=gap.char)
+    ## Give a custom class so we can check for it later.
+    class( out ) <- append( class( out ), "seqrates")
     return( out )
 }
 
