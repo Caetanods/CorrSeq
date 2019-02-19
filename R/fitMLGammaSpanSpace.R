@@ -26,7 +26,6 @@
 ##' @param n.cores number of cores to perform the likelihood evaluation.
 ##' @return A list with the log-likelihood, initial parameters and the parameter values.
 ##' @importFrom nloptr nloptr
-##' @importFrom expm expm
 ##' @importFrom ape reorder.phylo
 ##' @export
 ##' @author Daniel Caetano
