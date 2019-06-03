@@ -7,14 +7,14 @@
 using namespace Rcpp;
 
 // logLikMk_C
-double logLikMk_C(int n_nodes, int n_tips, int n_states, arma::vec edge_len, arma::mat edge_mat, arma::vec parents, arma::mat X, arma::mat Q, int root_node, int root_type);
+double logLikMk_C(arma::uword n_nodes, arma::uword n_tips, arma::uword n_states, arma::vec edge_len, arma::mat edge_mat, arma::vec parents, arma::mat X, arma::mat Q, int root_node, int root_type);
 RcppExport SEXP _CorrSeq_logLikMk_C(SEXP n_nodesSEXP, SEXP n_tipsSEXP, SEXP n_statesSEXP, SEXP edge_lenSEXP, SEXP edge_matSEXP, SEXP parentsSEXP, SEXP XSEXP, SEXP QSEXP, SEXP root_nodeSEXP, SEXP root_typeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< int >::type n_nodes(n_nodesSEXP);
-    Rcpp::traits::input_parameter< int >::type n_tips(n_tipsSEXP);
-    Rcpp::traits::input_parameter< int >::type n_states(n_statesSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type n_nodes(n_nodesSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type n_tips(n_tipsSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type n_states(n_statesSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type edge_len(edge_lenSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type edge_mat(edge_matSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type parents(parentsSEXP);

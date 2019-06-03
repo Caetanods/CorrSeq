@@ -1,11 +1,11 @@
-##' .. content for \description{} (no empty lines) ..
+##' Internal function to get the likelihood of the model.
 ##'
-##' .. content for \details{} ..
+##' No details.
 ##' @title Compute the loglik for the model.
-##' @param phy 
-##' @param data 
-##' @param Q 
-##' @param root.type 
+##' @param phy the phylogeny
+##' @param data the data matrix
+##' @param Q the transition matrix
+##' @param root.type the root type
 ##' @return Return the loglik for the model.
 ##' @author daniel
 getLogLikMk <- function(phy, data, Q, root.type){

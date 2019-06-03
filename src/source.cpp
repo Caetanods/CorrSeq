@@ -8,7 +8,7 @@ using namespace arma;
 // #######################################################
 
 // [[Rcpp::export]]
-double logLikMk_C(int n_nodes, int n_tips, int n_states, arma::vec edge_len, arma::mat edge_mat, arma::vec parents, arma::mat X, arma::mat Q, int root_node, int root_type) {
+double logLikMk_C(arma::uword n_nodes, arma::uword n_tips, arma::uword n_states, arma::vec edge_len, arma::mat edge_mat, arma::vec parents, arma::mat X, arma::mat Q, int root_node, int root_type) {
   // This is the log-lik function for a simple Mk model fitted to the tree. This will return the likelihood of the transition matrix for the rate regimes.
 
   // n_nodes = number of nodes in phy
@@ -90,7 +90,7 @@ double priorQ(arma::vec vec_Q, arma::vec par_prior_Q, std::string den_Q){
   return pp;
 }
 
-arma::vec extractQ(arma::mat Q, int size, std::string model_Q){
+arma::vec extractQ(arma::mat Q, arma::uword size, std::string model_Q){
   // Function to extract a column vector from the Q matrix.
   // Length of the vector will depend on the type of the model for the Q matrix.
   // Need to use the same pattern to extract and rebuild the matrix.
@@ -126,7 +126,7 @@ arma::vec extractQ(arma::mat Q, int size, std::string model_Q){
   return vec_Q;
 }
 
-arma::mat buildQ(arma::vec vec_Q, int size, std::string model_Q){
+arma::mat buildQ(arma::vec vec_Q, arma::uword size, std::string model_Q){
   // Function to re-build the Q matrix.
   // Need to follow the same pattern used to extract the vector.
   arma::mat Q = mat(size, size, fill::zeros);
@@ -178,7 +178,7 @@ void writeQToFile(std::ostream& Q_mcmc_stream, arma::vec vec_Q, int k, std::stri
   if( model_Q == "ER" ){
     Q_mcmc_stream << vec_Q;
   } else{
-    int print_size = vec_Q.n_rows;
+    arma::uword print_size = vec_Q.n_rows;
     for( arma::uword i=0; i < (print_size-1); i++ ){
       Q_mcmc_stream << vec_Q[i];
       Q_mcmc_stream << "; ";

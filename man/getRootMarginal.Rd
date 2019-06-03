@@ -7,20 +7,20 @@
 getRootMarginal(phy, data, fit)
 }
 \arguments{
-\item{phy}{}
+\item{phy}{the phylogeny}
 
-\item{data}{}
+\item{data}{the data matrix}
 
-\item{fit}{}
+\item{fit}{the model fit}
 }
 \value{
 A list with the marginal root probabilities.
 }
 \description{
-.. content for \description{} (no empty lines) ..
+Get the marginal probability at the root.
 }
 \details{
-.. content for \details{} ..
+No details.
 }
 \author{
 daniel

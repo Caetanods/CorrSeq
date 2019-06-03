@@ -7,22 +7,22 @@
 getLogLikMk(phy, data, Q, root.type)
 }
 \arguments{
-\item{phy}{}
+\item{phy}{the phylogeny}
 
-\item{data}{}
+\item{data}{the data matrix}
 
-\item{Q}{}
+\item{Q}{the transition matrix}
 
-\item{root.type}{}
+\item{root.type}{the root type}
 }
 \value{
 Return the loglik for the model.
 }
 \description{
-.. content for \description{} (no empty lines) ..
+Internal function to get the likelihood of the model.
 }
 \details{
-.. content for \details{} ..
+No details.
 }
 \author{
 daniel

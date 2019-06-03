@@ -1,10 +1,10 @@
-##' .. content for \description{} (no empty lines) ..
+##' Get the marginal probability at the root.
 ##'
-##' .. content for \details{} ..
+##' No details.
 ##' @title Function to compute the marginal estimate of root values.
-##' @param phy 
-##' @param data 
-##' @param fit 
+##' @param phy the phylogeny
+##' @param data the data matrix
+##' @param fit the model fit
 ##' @return A list with the marginal root probabilities.
 ##' @author daniel
 ##' @importFrom expm expm
