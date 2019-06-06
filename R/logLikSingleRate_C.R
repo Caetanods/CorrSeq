@@ -12,7 +12,7 @@
 ##' @noRd
 loglikSingleRate_C <- function(n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, X, Q, root_type, n.cores){
     ## Simple function computes the lik for a MK model for each site. Returns the joint probability.
-    lik <- parallel::mclapply(1:length(X), function(site) seqtraits:::logLikMk_C(n_nodes = n_nodes, n_tips = n_tips, n_states = n_states[site], edge_len = edge_len, edge_mat = edge_mat, parents = parents, X = X[[site]], Q = Q[[site]], root_node = root_node, root_type = root_type)
+    lik <- parallel::mclapply(1:length(X), function(site) logLikMk_C(n_nodes = n_nodes, n_tips = n_tips, n_states = n_states[site], edge_len = edge_len, edge_mat = edge_mat, parents = parents, X = X[[site]], Q = Q[[site]], root_node = root_node, root_type = root_type)
                             , mc.cores = n.cores )
     ## lik <- parallel::mclapply(1:length(X), function(site) logLikMk(phy, X=X[[site]], Q=Q[[site]], root.type=root.type)
     ##                         , mc.cores = n.cores )
