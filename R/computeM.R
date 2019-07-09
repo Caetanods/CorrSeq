@@ -5,6 +5,9 @@ computeM <- function(rate_cat, alpha, rho, k){
     ## One easy way to do this would be to shrink the matrix and keep only rate categories with non-zero.
     ## Then we can get the size of the matrix when computing the likelihood. Note that we are skipping categories with zero width anyways...
 
+    ## The first bound is always 0.0:
+    rate_cat[1] <- 0.0
+    
     ## Check the width of the categories:
     width_rate <- sapply(2:length(rate_cat), function(i) round(rate_cat[i] - rate_cat[i-1], digits = 10) )
     if( any(width_rate == 0.0) ){
@@ -26,6 +29,11 @@ computeM <- function(rate_cat, alpha, rho, k){
                 B <- pbivGamma(x=rate_vec[1], y=rate_vec[3], alpha=alpha, corr=rho, log.p=FALSE)
                 C <- pbivGamma(x=rate_vec[1], y=rate_vec[4], alpha=alpha, corr=rho, log.p=FALSE)
                 D <- pbivGamma(x=rate_vec[2], y=rate_vec[3], alpha=alpha, corr=rho, log.p=FALSE)
+                ## Some of the densities will be 0.0 (but the function will return NA.)
+                if( is.na(A) ) A <- 0.0
+                if( is.na(B) ) B <- 0.0
+                if( is.na(C) ) C <- 0.0
+                if( is.na(D) ) D <- 0.0
                 marg_vec <- pgamma(q = rate_vec[1:2], shape = alpha, rate = alpha)
                 M[i,j] <- (A + B - C - D) / (marg_vec[2] - marg_vec[1])
             }
@@ -50,6 +58,11 @@ computeM <- function(rate_cat, alpha, rho, k){
                 B <- pbivGamma(x=rate_vec[1], y=rate_vec[3], alpha=alpha, corr=rho, log.p=FALSE)
                 C <- pbivGamma(x=rate_vec[1], y=rate_vec[4], alpha=alpha, corr=rho, log.p=FALSE)
                 D <- pbivGamma(x=rate_vec[2], y=rate_vec[3], alpha=alpha, corr=rho, log.p=FALSE)
+                ## Some of the densities will be 0.0 (but the function will return NA.)
+                if( is.na(A) ) A <- 0.0
+                if( is.na(B) ) B <- 0.0
+                if( is.na(C) ) C <- 0.0
+                if( is.na(D) ) D <- 0.0
                 marg_vec <- pgamma(q = rate_vec[1:2], shape = alpha, rate = alpha)
                 M[i,j] <- (A + B - C - D) / (marg_vec[2] - marg_vec[1])
             }

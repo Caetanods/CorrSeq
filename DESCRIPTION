@@ -1,6 +1,6 @@
 Package: CorrSeq
 Title: Phylogenetic Comparative Methods to Study Sequence Traits and Correlated Evolution
-Version: 1.0.0
+Version: 1.0.1
 Authors@R: person("Daniel", "Caetano", email = "caetanods1@gmail.com", role = c("aut", "cre"))
 Description: Tools for sequence trait data and methods to analyse trait evolution for sequence phenotypes and other sequential data. Fit models of trait evolution independent of sequence position or with rates correlated between adjacent positions.
 Depends: R (>= 3.4.4)

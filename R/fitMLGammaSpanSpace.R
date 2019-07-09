@@ -417,7 +417,8 @@ fitCorrSeq <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.typ
     ## Search for upper and lower bounds for the beta parameter for the Gamma rates that do not produce 0 rate values.
     if( rate.model %in% c("correlated","gamma") ){
         ## The single rate model does not have a beta parameter.
-        beta.bounds <- findMaxBeta(ncat)
+        ## beta.bounds <- findMaxBeta(ncat)
+        beta.bounds <- findMinBeta(ncats = ncat)
     }
     
     ## Create the vectors for the upper and lower bound for nloptr.
