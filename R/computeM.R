@@ -69,12 +69,13 @@ computeM <- function(rate_cat, alpha, rho, k){
         }
         ## We will always have an issue to compute the last category. This is because the last category is bounded at Inf.
         ## But we can use the attributes of the M matrix, which is doubly stochastic, to derive these probabilities:
+        ## By the law of total probability, the last category will simply be 1 - the sum of prob of all others.
         for( i in 1:(k-1) ){
             M[k,i] <- 1 - sum(M[,i], na.rm = TRUE)
             M[i,k] <- M[k,i]
         }
         ## Need to finish the M matrix here:    
-        M[k,k] <- 1 - sum(M[k,], na.rm = TRUE)        
+        M[k,k] <- 1 - sum(M[k,], na.rm = TRUE)
     }
     
     ## Hopefully this matrix is bullet-proof.

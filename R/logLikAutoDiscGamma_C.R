@@ -53,7 +53,7 @@ getFirstUnit <- function(gamma.lik, k, second_unit){
 ##' @noRd
 logLikAutoDiscGamma_C <- function(n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, X, Q, M, root_type, beta, k, n.cores){
 
-    ## n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node: these are parameters derived from the phylogy.
+    ## n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node: these are parameters derived from the phylogeny.
     ## root_type: 0 = equal probabilities and 1: madfitz // Derived from the original argument that is a character type.
     
     ## Here the rates are autocorrelated among the sites using the method proposed by Yang (1995).

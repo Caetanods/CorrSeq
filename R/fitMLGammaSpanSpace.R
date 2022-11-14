@@ -235,7 +235,7 @@ fitCorrSeq <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.typ
                 ## data = data matrix.
                 ## nstates = number of states in each of the sites in the data (now this is a vector).
                 ## gap.key is ignored in this case.
-                x <- exp(obj[1])
+                x <- exp(obj[1]) ## Searching for the rate of transition in log space.
                 beta <- obj[2]
                 rho <- obj[3] ## This is the correlation of the bivariate Gamma.
                 ## Will need to be a list.
@@ -249,7 +249,7 @@ fitCorrSeq <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.typ
                 gamma.rates <- discreteGamma(shape = beta, ncats = k) ## These are the k rates.
                 if( !is.matrix(M) ){ ## A single rate category!
                     ## The likelihood of the model considering only the last category.
-                    ## Because alpha is such that categories 1 to k-1 are empty (width of 0).
+                    ## Because beta is such that categories 1 to k-1 are empty (width of 0).
                     scaledQ <- lapply(Q, function(x) x * gamma.rates[k])
                     lik <- loglikSingleRate_C(n_nodes=n_nodes, n_tips=n_tips, n_states=n_states
                                             , edge_len=edge_len, edge_mat=edge_mat, parents=parents
@@ -390,7 +390,7 @@ fitCorrSeq <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.typ
                                          , root_type=root_type, beta=beta, k=k, n.cores=n.cores)[[1]]
                 ## lik <- loglikGammaSimple(phy=phy, X=data, Q=Q, root.type=root.type, beta=beta, k=k
                 ##                        , n.cores=n.cores)[[1]]
-                return( -lik ) ## Remember that NLOPT is minimizying the function!
+                return( -lik ) ## Remember that NLOPT is minimizing the function!
             }
         }
         if(rate.model == "single.rate"){
