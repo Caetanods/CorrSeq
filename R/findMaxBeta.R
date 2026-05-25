@@ -1,3 +1,4 @@
+##' @importFrom stats setNames
 findMaxBeta <- function(ncats, precision = 0.01){
     ## Finds the lower and upper bounds for the beta parameter for the Gamma distribution.
     ## Prevents the generation of the 0 valued rates.

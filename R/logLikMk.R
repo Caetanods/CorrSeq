@@ -32,6 +32,7 @@ make.data.tips.numeric <- function(X, Q){
 ##' @author daniel
 ##' @importFrom expm expm
 ##' @importFrom ape Ntip
+##' @importFrom stats reorder
 ##' @noRd
 logLikMk <- function(phy, X, Q, root.type){
     ## Log likelihood for the model. Notice that some pre-processing for the tree is possible and likely necessary.

@@ -6,6 +6,7 @@
 ## }
 
 ## Corrected version of the function. This directly compute the integration of the Gamma density.
+##' @importFrom stats qgamma dgamma integrate
 discreteGamma <- function(shape, ncats){
     ## Get the quantiles.    
     quantiles <- qgamma((1:(ncats - 1))/ncats, shape = shape, rate = shape)

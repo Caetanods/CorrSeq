@@ -11,19 +11,13 @@
 ##' @param root_node the root node in the matrix
 ##' @param X data, this is a list of matrices
 ##' @param Q a list of transition matrices 
-##' @param beta 
-##' @param k 
-##' @param n.cores 
+##' @param beta the shape parameter for the Gamma distribution used to model among site rate variation.
+##' @param k the parameter for the number of rate categories.
+##' @param n.cores number of cores using the in the calculation.
 ##' @return The log-likelihood for the model.
 ##' @author daniel
 ##' @noRd
 loglikGammaSimple_C <- function(n_nodes, n_tips, n_states, edge_len, edge_mat, parents, root_node, X, Q, root_type, beta, k, n.cores){
-    ## phy = phylo
-    ## X = data frame with number of columns equal to the number of traits and rownames equal to the species names in the phylogeny.
-    ## Q = transition matrix among the states. Here we use a global transition matrix, meaning that all the traits have the same number of states.
-    ## pi = data frame with the probabilities at the root for each of the states for each of the traits.
-    ## beta = the shape parameter for the Gamma distribution used to model among site rate variation.
-    ## k = the parameter for the number of rate categories.
     ## This function assumes that all sites have the same number of states. This is our simplest case.
     
     ## For each site we need to sum the probabilities with the Q scale by the r factor from the gamma distribution.

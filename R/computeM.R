@@ -1,3 +1,4 @@
+##' @importFrom stats pgamma
 computeM <- function(rate_cat, alpha, rho, k){
     ## This function will generate the transition probabilities matrix for the likelihood of the model.
     ## Need to have a matrix that makes sense in all possible cases.

@@ -11,6 +11,7 @@ get.seq <- function(X, a, b){
 ##' @param file the FASTA file to be read.
 ##' @return a matrix with the sequence trait
 ##' @author Daniel Caetano
+##' @importFrom utils read.csv
 ##' @export
 readFasta2Matrix <- function(file){
     raw.matrix <- read.csv(file = file, as.is = TRUE, header = FALSE)
@@ -26,5 +27,6 @@ readFasta2Matrix <- function(file){
     seq.data <- seq.data[,to.drop]
     rownames( seq.data ) <- species
     colnames( seq.data ) <- paste0("pos", 1:ncol(seq.data))
-    return( seq.data )   
+    return( seq.data )
 }
+

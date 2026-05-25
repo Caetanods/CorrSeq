@@ -7,6 +7,7 @@
 ##' @param verbose whether to print information to the screen.
 ##' @param legacy.mode whether to check structure of objects instead of class.
 ##' @return A list object with a vector of rates, a vector of flags from the model averaging algorithm and a named vector with the AICw for the models.
+##' @importFrom stats ftable 
 ##' @export
 ##' @author Daniel Caetano
 getAverageRates <- function(..., verbose = TRUE, legacy.mode = FALSE){

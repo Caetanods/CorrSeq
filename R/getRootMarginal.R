@@ -9,6 +9,7 @@
 ##' @author daniel
 ##' @importFrom expm expm
 ##' @importFrom ape Ntip
+##' @importFrom stats reorder
 getRootMarginal <- function(phy, data, fit){
     ## Uses the same algorithm as Maddison and Fitzjohn to compute the marginal probability for the root of the tree.
     ## This will require computing the likelihoods for the nodes again.

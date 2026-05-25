@@ -4,11 +4,25 @@
 \alias{fitCorrSeq}
 \title{Maximum likelihood estimate of evolutionary rates}
 \usage{
-fitCorrSeq(data, phy, Q.model = "ER", rate.model = "gamma",
-  root.type = "madfitz", add.invar = FALSE, poly.key = NULL,
-  ncat = 4, init.M = FALSE, bounds = NULL, state.space = "max.div",
-  gap.char = "-", opts = NULL, search.global = TRUE, init = NULL,
-  verbose = TRUE, n.cores = 1)
+fitCorrSeq(
+  data,
+  phy,
+  Q.model = "ER",
+  rate.model = "gamma",
+  root.type = "madfitz",
+  add.invar = FALSE,
+  poly.key = NULL,
+  ncat = 4,
+  init.M = FALSE,
+  bounds = NULL,
+  state.space = "max.div",
+  gap.char = "-",
+  opts = NULL,
+  search.global = TRUE,
+  init = NULL,
+  verbose = TRUE,
+  n.cores = 1
+)
 }
 \arguments{
 \item{data}{matrix with species names as rownames and sequence positions as the columns.}

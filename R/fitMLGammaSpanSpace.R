@@ -27,6 +27,7 @@
 ##' @return A list with the log-likelihood, initial parameters and the parameter values.
 ##' @importFrom nloptr nloptr
 ##' @importFrom ape reorder.phylo
+##' @importFrom stats runif 
 ##' @export
 ##' @author Daniel Caetano
 fitCorrSeq <- function(data, phy, Q.model = "ER", rate.model = "gamma", root.type = "madfitz", add.invar = FALSE, poly.key = NULL, ncat = 4, init.M = FALSE, bounds = NULL, state.space = "max.div", gap.char = "-", opts = NULL, search.global = TRUE, init = NULL, verbose = TRUE, n.cores = 1){
