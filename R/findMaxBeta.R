@@ -19,7 +19,7 @@ findMaxBeta <- function(ncats, precision = 0.01){
 
 findMinBeta <- function(ncats, precision = 0.01){
     ## Finds the lower and upper bounds for the beta parameter for the Gamma distribution.
-    ## Prevents the generation of the 0 valued rates.
+    ## Prevents the generation of 0 valued rates.
     ## This function searches for the min value for the Beta parameter.
     ## The max value is set to 1000. Seems to be a good guess.
 

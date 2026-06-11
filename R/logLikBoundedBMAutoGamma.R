@@ -12,7 +12,7 @@ logLikBoundedBMSimple <- function(lik_fn, bm, n.cores){
     return(final.lik)
 }
 
-getMarginalBMSimpleGamma <- function(lik_fn, solution, k, n.cores){
+getMarginalBoundedBMSimpleGamma <- function(lik_fn, solution, k, n.cores){
     ## Function to estimate the marginal rate of the bounded BM model for each sequence position.
     ## This is to be used with the maximum likelihood value for the parameters and NOT part of the MLE estimation.
     gamma.rates <- discreteGamma(shape = solution[2], ncats = k)
