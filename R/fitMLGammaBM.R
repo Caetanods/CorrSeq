@@ -7,10 +7,10 @@ reconBM <- function(lik_fn, solution, ncat, rate.model, seq_length, n.cores){
   
   if( rate.model == "correlated" ){
     ## In this case need to append to the solution object.
-    gamma.rates <- discreteGamma(shape = solution[3], ncats = ncat) ## The gamma rates.
-    cat <- qgamma((1:(ncat-1))/ncat, shape = solution[3], rate = solution[3])
+    gamma.rates <- discreteGamma(shape = solution[2], ncats = ncat) ## The gamma rates.
+    cat <- qgamma((1:(ncat-1))/ncat, shape = solution[2], rate = solution[2])
     cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
-    M <- computeM(rate_cat=cat, alpha = solution[3], rho=solution[3], k=ncat)
+    M <- computeM(rate_cat=cat, alpha = solution[2], rho=solution[3], k=ncat)
     ## Need to make sure that the format for the output is the same between models.
     if( !is.matrix(M) ){ ## A single rate category!
       ## In this case only the last category matters.
@@ -43,7 +43,7 @@ reconBM <- function(lik_fn, solution, ncat, rate.model, seq_length, n.cores){
 ##' @param init.M whether the initial state for the M matrix (for the correlated model) should have starting state equal to the gamma model (i.e., equal probabilities for all the transitions) or a random starting point.
 ##' @param bounds a numeric vector of length 2 with the lower and upper bonds for the BM rates.
 ##' @param opts the list of options for nloptr. If NULL it will use the default parameters of this function (not the same as the default for 'nloptr'). See more information in the help page for 'nloptr'.
-##' @param search.global whether to perform a global MLE search before the local MLE search. Default is TRUE.
+##' @param search.global whether to perform a global MLE search before the local MLE search. Default is FALSE.
 ##' @param init set the initial parameters for the MLE search. The length varies depending on the rate.model .
 ##' @param verbose whether to print information to the screen.
 ##' @param n.cores number of cores to perform the likelihood evaluation.
@@ -53,7 +53,7 @@ reconBM <- function(lik_fn, solution, ncat, rate.model, seq_length, n.cores){
 ##' @importFrom stats runif 
 ##' @export
 ##' @author Daniel Caetano
-fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, init.M = FALSE, bounds = NULL, opts = NULL, search.global = TRUE, init = NULL, verbose = TRUE, n.cores = 1){
+fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, init.M = FALSE, bounds = NULL, opts = NULL, search.global = FALSE, init = NULL, verbose = TRUE, n.cores = 1){
   
   rate.model <- match.arg(rate.model, choices=c("correlated", "gamma", "single.rate"), several.ok=FALSE)
   
@@ -198,7 +198,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
   ## Sample the initial parameters for the search.
   ## Here the user can provide a custom start.
   if( is.null(init) ){
-    print( "Sampling starting state..." )
+    if( verbose ) print( "Sampling starting state..." )
     while( TRUE ){
       ## Keep sampling starting states until the sampled state returns a viable likelihood.
       if(rate.model == "gamma"){

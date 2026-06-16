@@ -13,7 +13,7 @@ fitCorrSeqBM(
   init.M = FALSE,
   bounds = NULL,
   opts = NULL,
-  search.global = TRUE,
+  search.global = FALSE,
   init = NULL,
   verbose = TRUE,
   n.cores = 1
@@ -36,7 +36,7 @@ fitCorrSeqBM(
 
 \item{opts}{the list of options for nloptr. If NULL it will use the default parameters of this function (not the same as the default for 'nloptr'). See more information in the help page for 'nloptr'.}
 
-\item{search.global}{whether to perform a global MLE search before the local MLE search. Default is TRUE.}
+\item{search.global}{whether to perform a global MLE search before the local MLE search. Default is FALSE.}
 
 \item{init}{set the initial parameters for the MLE search. The length varies depending on the rate.model .}
 
