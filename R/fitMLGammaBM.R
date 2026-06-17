@@ -153,6 +153,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
       cat <- qgamma((1:(ncat - 1))/ncat, shape = beta, rate = beta)
       cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
       ## alpha and beta are the same thing.
+      
       M <- computeM(rate_cat = cat, alpha = beta, rho = rho, k = ncat)
       if( !is.matrix(M) ){ ## A single rate category!
         ## The likelihood of the model considering only the last category.
@@ -300,7 +301,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
   
   ## Complete output for the function:
   if( rate.model == "correlated" ){
-    M <- computeM(rate_cat = cat, alpha = solution[3], rho = solution[4], k = ncat)
+    M <- computeM(rate_cat = cat, alpha = solution[2], rho = solution[3], k = ncat)
   } else{
     M <- NA
   }
