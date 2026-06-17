@@ -21,7 +21,7 @@ pbivGamma <- function(x, y, alpha, corr, log.p=TRUE){
     cdf[2] <- pgamma(q=y, shape=alpha, rate=alpha)
     normcdf <- qnorm(cdf) ## Original code do some bound operation to protect here.
     
-    ## calculate copula contribution to log-PDF    
+    ## calculate copula contribution to log-PDF   
     res.copula.add <- log( pbivnorm(x = normcdf[1], y = normcdf[2], rho = corr) ) ## Not in log.
     res.copula.sub <- sum( pnorm(normcdf, log.p=TRUE) )
     res.copula <- res.copula.add - res.copula.sub ## Division of the probabilities.
