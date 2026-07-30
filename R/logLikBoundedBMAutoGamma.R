@@ -1,8 +1,9 @@
+##' @importFrom parallel mclapply
 logLikBoundedBMSimple <- function(lik_fn, bm, n.cores){
     ## Likelihood for the simple Bound BM across the sites of the sequence trait.
     ## Because this is not a Gamma model, we don't need to compute the weighted average at the end.
     bm_rate <- to_bound_BM_lik(bm)
-    lik <- parallel::mclapply(1:length(lik_fn), function(site) lik_fn[[site]](x = bm_rate)
+    lik <- mclapply(1:length(lik_fn), function(site) lik_fn[[site]](x = bm_rate)
                             , mc.cores = n.cores )
     final.lik <- do.call(sum, lik)
     if( is.na( final.lik ) ){
@@ -29,6 +30,7 @@ getMarginalBoundedBMSimpleGamma <- function(lik_fn, solution, k, n.cores){
     return( marginal.bm )
 }
 
+##' @importFrom parallel mclapply
 logLikBoundedBMSimpleGamma <- function(lik_fn, bm, beta, k, n.cores){
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
     ## Need to protect if any of the rates has 0 value. Showing warning message here.
@@ -37,7 +39,7 @@ logLikBoundedBMSimpleGamma <- function(lik_fn, bm, beta, k, n.cores){
     gamma_bm_rates <- gamma.rates * bm # A vector with the scaled rates with length k
     scaled_lik_gamma_bm <- to_bound_BM_lik(gamma_bm_rates)
     ## The code here is parallel on the number of sites.
-    gamma.lik <- parallel::mclapply(1:length(lik_fn), function(site) sapply(scaled_lik_gamma_bm, function(r) lik_fn[[site]](x=r)), mc.cores = n.cores)
+    gamma.lik <- mclapply(1:length(lik_fn), function(site) sapply(scaled_lik_gamma_bm, function(r) lik_fn[[site]](x=r)), mc.cores = n.cores)
     ## We can use 'gamma.lik' to get the averaged transition matrix for the site.
     rel.lik <- lapply(1:length(lik_fn), function(x) exp(gamma.lik[[x]]) / sum( exp(gamma.lik[[x]]) ) )
     final.lik <- sum( sapply(1:length(lik_fn), function(x) log( sum( exp( gamma.lik[[x]] ) ) / k ) ) )
@@ -56,6 +58,7 @@ logLikBoundedBMSimpleGamma <- function(lik_fn, bm, beta, k, n.cores){
     ## UPDATE: We have a function for the marginal estimate: getMarginalBMSimpleGamma
 }
 
+##' @importFrom parallel mclapply
 logLikBoundedBMAutoGamma <- function(lik_fn, bm, M, beta, k, n.cores){
     ## lik_fn is the likelihood function for the model.
     ## M is the M matrix
@@ -78,7 +81,7 @@ logLikBoundedBMAutoGamma <- function(lik_fn, bm, M, beta, k, n.cores){
     scaled_lik_gamma_bm <- to_bound_BM_lik(gamma_bm_rates)
 
     ## This computes the likelihood for the sites given all the rate categories.
-    gamma.lik <- parallel::mclapply(1:length(lik_fn), function(site) sapply(scaled_lik_gamma_bm, function(r) lik_fn[[site]](x = r) ), mc.cores = n.cores)
+    gamma.lik <- mclapply(1:length(lik_fn), function(site) sapply(scaled_lik_gamma_bm, function(r) lik_fn[[site]](x = r) ), mc.cores = n.cores)
 
     ## Store number of sites
     nsites <- length(lik_fn)

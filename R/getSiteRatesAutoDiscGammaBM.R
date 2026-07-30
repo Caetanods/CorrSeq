@@ -1,11 +1,10 @@
 getMarginalBMSimpleGamma <- function(lik_fn, solution, k, n.cores){
   ## Function to estimate the marginal rate of the bounded BM model for each sequence position.
   ## This is to be used with the maximum likelihood value for the parameters and NOT part of the MLE estimation.
-  mu <- solution[3:length(solution)]
   gamma.rates <- discreteGamma(shape = solution[2], ncats = k)
   gamma.rates <- gamma.rates[!round(gamma.rates, digits=20) == 0] ## The strict test with 0.0 will never trigger.
   gamma_bm_rates <- gamma.rates * solution[1] # A vector with the scaled rates with length k
-  gamma.lik <- lapply(1:length(lik_fn), function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r, mu = mu[site])))
+  gamma.lik <- lapply(1:length(lik_fn), function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r)))
   # rel.lik <- lapply(1:length(lik_fn), function(x) exp(gamma.lik[[x]]) / sum( exp(gamma.lik[[x]]) ) )
   ## Doing the exponential AFTER taking the proportion below.
   rel.lik <- lapply(1:length(lik_fn), function(x) exp( gamma.lik[[x]] - logSumExp( gamma.lik[[x]] ) ))
@@ -17,9 +16,9 @@ getMarginalBMSimpleGamma <- function(lik_fn, solution, k, n.cores){
   return( marginal.bm )
 }
 
+##' @importFrom parallel mclapply
 getMarginalBMAutoDiscGamma <- function(lik_fn, solution, M, k, nsites, n.cores){
   ## Computes the marginal estimate for the rates under a BM model.
-  mu <- solution[4:length(solution)]
   gamma.rates <- discreteGamma(shape = solution[2], ncats = k)
   eff_cat <- ncol(M)
   ## Transition probabilities of zero on this matrix can cause problems on log space.
@@ -28,7 +27,7 @@ getMarginalBMAutoDiscGamma <- function(lik_fn, solution, M, k, nsites, n.cores){
   gamma.rates <- gamma.rates[ (k+1-eff_cat):k ]
   gamma_bm_rates <- gamma.rates * solution[1] # A vector with the scaled rates with length k
   ## This computes the likelihood for each site given all the rate categories.
-  gamma.lik <- parallel::mclapply(1:nsites, function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r, mu = mu[site]) ), mc.cores = n.cores)
+  gamma.lik <- mclapply(1:nsites, function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r) ), mc.cores = n.cores)
 
   ## Need special code for nsites < 5.
   if( nsites > 4 ){

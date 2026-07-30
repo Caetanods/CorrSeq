@@ -24,9 +24,18 @@ prepareBM <- function(dat_vec, phy, se){
   n <- Ntip(phy)
   E <- diag(se^2) # Make the error matrix from the standard error.
   
-  logLikBMtmp <- function(sigma, mu){
-    logL <- as.numeric(-t(dat_vec-mu) %*% solve(sigma * C + E) %*% (dat_vec-mu)/2 -
-                         n * log(2*pi) / 2 - determinant(sigma * C + E)$modulus[1]/2)
+  #logLikBMtmp <- function(sigma, mu){
+  #  logL <- as.numeric(-t(dat_vec-mu) %*% solve(sigma * C + E) %*% (dat_vec-mu)/2 -
+  #                       n * log(2*pi) / 2 - determinant(sigma * C + E)$modulus[1]/2)
+  
+  ## Version of the log-likelihood conditioned on the MLE for mu.
+  Cinv <- solve( C )
+  one_vec <- rep(1, times = n)
+  mu <- (one_vec %*% Cinv %*% dat_vec) / (one_vec %*% Cinv %*% one_vec)
+  mu <- rep(mu, length = n) ## Fix warning message.
+  logLikBMtmp <- function(sigma){
+   logL <- as.numeric(-t(dat_vec-mu) %*% solve(sigma * C + E) %*% (dat_vec-mu)/2 -
+                        n * log(2*pi) / 2 - determinant(sigma * C + E)$modulus[1]/2)
     return(logL)
   }
 
@@ -46,9 +55,12 @@ prepareBMstart <- function(dat_vec, phy){
   C <- vcv.phylo(phy)
   n <- Ntip(phy)
   
-  # Use the analytical solution as the starting state for the search:
-  mu_start <- as.numeric( colSums(solve(C)) %*% ( dat_vec/sum(solve(C)) ) )
-  sigma_start <- as.numeric( t(dat_vec-mu_start) %*% solve(C) %*% (dat_vec-mu_start)/n )
+  # Use the analytic solution as the starting state for the search:
+  Cinv <- solve( C )
+  one_vec <- rep(1, times = n)
+  mu <- (one_vec %*% Cinv %*% dat_vec) / (one_vec %*% Cinv %*% one_vec)
+  mu <- rep(mu, length = n) ## Fix warning message.
+  sigma_start <- as.numeric( t(dat_vec-mu) %*% Cinv %*% (dat_vec-mu)/n )
   
-  return( c(sigma_start, mu_start) )
+  return( sigma_start )
 }

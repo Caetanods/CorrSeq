@@ -1,8 +1,8 @@
-logLikBMSimple <- function(lik_fn, sigma, mu, n.cores){
+##' @importFrom parallel mclapply
+logLikBMSimple <- function(lik_fn, sigma, n.cores){
     ## Likelihood for the simple BM across the sites of the sequence trait.
     ## Because this is not a Gamma model, we don't need to compute the weighted average at the end.
-    lik <- parallel::mclapply(1:length(lik_fn), function(site) lik_fn[[site]](sigma = sigma
-                                                                              , mu = mu[site])
+    lik <- mclapply(1:length(lik_fn), function(site) lik_fn[[site]](sigma = sigma)
                             , mc.cores = n.cores )
     final.lik <- do.call(sum, lik)
     if( is.na( final.lik ) ){
@@ -12,7 +12,8 @@ logLikBMSimple <- function(lik_fn, sigma, mu, n.cores){
     return(final.lik)
 }
 
-logLikBMSimpleGamma <- function(lik_fn, sigma, mu, beta, k, n.cores){
+##' @importFrom parallel mclapply
+logLikBMSimpleGamma <- function(lik_fn, sigma, beta, k, n.cores){
     gamma.rates <- discreteGamma(shape = beta, ncats = k)
     ## Need to protect if any of the rates has 0 value. Showing warning message here.
     ## Rate of 0 will set the likelihood to 0. So we can just skip it.
@@ -22,7 +23,7 @@ logLikBMSimpleGamma <- function(lik_fn, sigma, mu, beta, k, n.cores){
     gamma_bm_rates <- gamma.rates * sigma # A vector with the scaled rates with length k
     
     ## The code here is parallel on the number of sites.
-    gamma.lik <- parallel::mclapply(1:length(lik_fn), function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r, mu = mu[site])), mc.cores = n.cores)
+    gamma.lik <- mclapply(1:length(lik_fn), function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r)), mc.cores = n.cores)
     ## We can use 'gamma.lik' to get the averaged transition matrix for the site.
     
     ## NOTE: The rel.lik is computed below but it is not used for anything. Why is this value computed?
@@ -42,7 +43,8 @@ logLikBMSimpleGamma <- function(lik_fn, sigma, mu, beta, k, n.cores){
     }
 }
 
-logLikBMAutoGamma <- function(lik_fn, sigma, mu, M, beta, k, n.cores){
+##' @importFrom parallel mclapply
+logLikBMAutoGamma <- function(lik_fn, sigma, M, beta, k, n.cores){
     ## lik_fn is the likelihood function for the model.
     ## M is the M matrix
     ## beta is the parameter for the Gamma
@@ -63,7 +65,7 @@ logLikBMAutoGamma <- function(lik_fn, sigma, mu, M, beta, k, n.cores){
     gamma_bm_rates <- gamma.rates * sigma # A vector with the scaled rates with length k
 
     ## This computes the likelihood for the sites given all the rate categories.
-    gamma.lik <- parallel::mclapply(1:length(lik_fn), function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r, mu = mu[site]) ), mc.cores = n.cores)
+    gamma.lik <- mclapply(1:length(lik_fn), function(site) sapply(gamma_bm_rates, function(r) lik_fn[[site]](sigma = r) ), mc.cores = n.cores)
 
     ## Store number of sites
     nsites <- length(lik_fn)
@@ -71,7 +73,7 @@ logLikBMAutoGamma <- function(lik_fn, sigma, mu, M, beta, k, n.cores){
                                                                 , n=nsites)) ## Last site.
 
     lik_unit <- N_unit ## Start the loop.
-    for( site in (nsites-1):2){ ## Next to last up to the second site.
+    for( site in (nsites-1):2 ){ ## Next to last up to the second site.
         ## Loop will compute the cumulative probability across the sites using the recursive algorithm.
         lik_unit <- sapply(1:effective_rates, function(i) getIntUnit(gamma.lik=gamma.lik, M=M, i=i
                                                      , n=site, left_unit=lik_unit))
