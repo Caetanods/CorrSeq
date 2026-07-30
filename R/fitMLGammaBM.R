@@ -40,7 +40,6 @@ reconBM <- function(lik_fn, solution, ncat, rate.model, seq_length, n.cores){
 ##' @param se the standard error of the tip data. This should be a named vector with length equal to tip data with the measurement error for each species. Alternatively, this can be a single value that will be used for all species. Set to NULL if unknown.
 ##' @param rate.model options are "correlated" , "gamma", and "single.rate". See Details below.
 ##' @param ncat categories for the gamma function.
-##' @param init.M whether the initial state for the M matrix (for the correlated model) should have starting state equal to the gamma model (i.e., equal probabilities for all the transitions) or a random starting point.
 ##' @param bounds a numeric vector of length 2 with the lower and upper bonds for the BM rates.
 ##' @param opts the list of options for nloptr. If NULL it will use the default parameters of this function (not the same as the default for 'nloptr'). See more information in the help page for 'nloptr'.
 ##' @param search.global whether to perform a global MLE search before the local MLE search. Default is FALSE.
@@ -53,7 +52,7 @@ reconBM <- function(lik_fn, solution, ncat, rate.model, seq_length, n.cores){
 ##' @importFrom stats runif 
 ##' @export
 ##' @author Daniel Caetano
-fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, init.M = FALSE, bounds = NULL, opts = NULL, search.global = FALSE, init = NULL, verbose = TRUE, n.cores = 1){
+fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, bounds = NULL, opts = NULL, search.global = FALSE, init = NULL, verbose = TRUE, n.cores = 1){
   
   rate.model <- match.arg(rate.model, choices=c("correlated", "gamma", "single.rate"), several.ok=FALSE)
   
@@ -114,7 +113,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
   ## NOTE: bounds are in normal space.
   if( rate.model == "correlated" ){
     ## The third parameter is a correlation
-    log_lb <- c(bounds[1], beta.bounds[1], 0)
+    log_lb <- c(bounds[1], beta.bounds[1], -1)
     log_ub <- c(bounds[2], beta.bounds[2], 1)
   }
   if( rate.model == "gamma"){
@@ -201,15 +200,14 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
       }
       if(rate.model == "correlated"){
         while( TRUE ){
-          init.rho <- ifelse(test=init.M, yes=0.5, no=runif(1, min=0, max=1) )
           init.pars <- c(sigma.mean.init
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2])
-                         , init.rho)
+                         , runif(1, min=-1, max=1))
           ## When the model is correlated, then the M matrix needs to be a good matrix on the starting point.
           ## Need to keep sampling until the starting point is a valid matrix.
           cat <- qgamma((1:(ncat-1))/ncat, shape = init.pars[2], rate = init.pars[2])
           cat <- c(.Machine$double.eps, cat, Inf) ## These are the bounds of the categories.
-          M_init <- computeM(rate_cat = cat, alpha = init.pars[2], rho = init.rho, k = ncat)
+          M_init <- computeM(rate_cat = cat, alpha = init.pars[2], rho = init.pars[3], k = ncat)
           ## If the M matrix is acceptable then keep the initial value, otherwise resample.
           rowCheck <- all( sapply(rowSums(M_init), function(x) isTRUE(all.equal(x, 1.0))) )
           colCheck <- all( sapply(colSums(M_init), function(x) isTRUE(all.equal(x, 1.0))) )
@@ -233,7 +231,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
       if( !length( init ) == 3 ) stop("Wrong number of init parameters. Length of init needs to be 3. init[1] is for the rate, init[2] is for the Gamma function parameter (beta), and init[3] is for the correlation of the bivariate Gamma.")
       if( init[1] < bounds[1] | init[1] > bounds[2] ) stop("Value for init[1] is out of bounds (defined by 'bounds').")
       if( init[2] < beta.bounds[1] | init[2] > beta.bounds[2] ) stop( paste0("Value for beta (init[2]) is outside bounds. min = ", beta.bounds[1], " and max = ", beta.bounds[2],".") )
-      if( init[3] > 1.0 | init[3] < 0.0 ) stop( paste0("Correlation (init[3]) needs to be between 0 and 1.") )
+      if( init[3] > 1.0 | init[3] < -1.0 ) stop( paste0("Correlation (init[3]) needs to be between -1 and 1.") )
     }
     if(rate.model == "gamma"){
       if( !length( init ) == 2 ) stop("Wrong number of init parameters. Length of init need to be 2. init[1] is for the rate and init[2] is for the Gamma function parameter (beta).")

@@ -10,7 +10,6 @@ fitCorrSeqBM(
   se = NULL,
   rate.model = "gamma",
   ncat = 4,
-  init.M = FALSE,
   bounds = NULL,
   opts = NULL,
   search.global = FALSE,
@@ -29,8 +28,6 @@ fitCorrSeqBM(
 \item{rate.model}{options are "correlated" , "gamma", and "single.rate". See Details below.}
 
 \item{ncat}{categories for the gamma function.}
-
-\item{init.M}{whether the initial state for the M matrix (for the correlated model) should have starting state equal to the gamma model (i.e., equal probabilities for all the transitions) or a random starting point.}
 
 \item{bounds}{a numeric vector of length 2 with the lower and upper bonds for the BM rates.}
 
