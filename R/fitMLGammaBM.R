@@ -109,24 +109,21 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
     bounds[1] <- .Machine$double.eps ## Very small number (smallest possible).
   }
   
-  ## Create the bounds for the root value (min and max of trait).
-  root_bounds <- apply(data, 2, range) # min and max on the rows.
-  
   ## Create the vectors for the upper and lower bound for nloptr global search.
   ## The bound is the same for each of the sites.
   ## NOTE: bounds are in normal space.
   if( rate.model == "correlated" ){
     ## The third parameter is a correlation
-    log_lb <- c(bounds[1], beta.bounds[1], 0, root_bounds[1,])
-    log_ub <- c(bounds[2], beta.bounds[2], 1, root_bounds[2,] )
+    log_lb <- c(bounds[1], beta.bounds[1], 0)
+    log_ub <- c(bounds[2], beta.bounds[2], 1)
   }
   if( rate.model == "gamma"){
-    log_lb <- c(bounds[1], beta.bounds[1], root_bounds[1,])
-    log_ub <- c(bounds[2], beta.bounds[2], root_bounds[2,] )
+    log_lb <- c(bounds[1], beta.bounds[1])
+    log_ub <- c(bounds[2], beta.bounds[2])
   }
   if( rate.model == "single.rate" ){
-    log_lb <- c(bounds[1], root_bounds[1,])
-    log_ub <- c(bounds[2], root_bounds[2,])
+    log_lb <- c(bounds[1])
+    log_ub <- c(bounds[2])
   }
   
   ## Prepare the BM likelihood function:
@@ -136,18 +133,16 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
   ## Make a matrix of starting states across all positions.
   ## data vectors on the columns. Two rows.
   start_par <- sapply(1:ncol(data), function(j) prepareBMstart(dat_vec=data[,j], phy=phy))
-  root.init <- start_par[2,] ## Root MLE estimate.
-  sigma.mean.init <- mean(start_par[1,]) ## Average MLE sigma across positions.
+  sigma.mean.init <- mean(start_par) ## Average MLE sigma across positions.
   
   ## Define the log likelihood functions. One of each model.
   if( rate.model == "correlated" ){
     wrapLogLik <- function(obj){
       ## obj is a vector of variable length.
-      ## obj[1] = sigma, obj[2] = mu, obj[3] = Gamma rate, obj[4] = correlation for the bivariate Gamma.
+      ## obj[1] = sigma, obj[2] = correlation for the bivariate Gamma, obj[3] = Gamma rate 
       sigma <- obj[1]
       beta <- obj[2]
       rho <- obj[3]
-      mu <- obj[4:length(obj)] # The last parameters are root values.
       
       ## The M matrix for the autocorrelation:
       cat <- qgamma((1:(ncat - 1))/ncat, shape = beta, rate = beta)
@@ -160,7 +155,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
         ## Because beta is such that categories 1 to k-1 are empty (width of 0).
         gamma.rates <- discreteGamma(shape = beta, ncats = ncat) ## These are the k rates.
         scaled_sigma <- gamma.rates[ncat] * sigma
-        lik <- logLikBMSimple(lik_fn = lik_BM_list, sigma = scaled_sigma, mu = mu, n.cores = n.cores)
+        lik <- logLikBMSimple(lik_fn = lik_BM_list, sigma = scaled_sigma, n.cores = n.cores)
         return( -1 * lik ) ## Inverted for NLOPT minimization.
       } else{
         ## Check if M is a doubly stochastic matrix. Otherwise, reject.
@@ -171,7 +166,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
           return( Inf ) 
         }
         ## Loglik function for the model.
-        lik <- logLikBMAutoGamma(lik_fn = lik_BM_list, sigma = sigma, mu = mu, M = M, beta = beta
+        lik <- logLikBMAutoGamma(lik_fn = lik_BM_list, sigma = sigma, M = M, beta = beta
                                  , k = ncat, n.cores = n.cores)
         return( -1 * lik ) ## Inverted for NLOPT minimization.
       }
@@ -181,8 +176,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
     wrapLogLik <- function(obj){
       sigma <- obj[1]
       beta <- obj[2]
-      mu <- obj[3:length(obj)] # The last parameters are root values.
-      lik <- logLikBMSimpleGamma(lik_fn = lik_BM_list, sigma = sigma, mu = mu, beta = beta, k = ncat
+      lik <- logLikBMSimpleGamma(lik_fn = lik_BM_list, sigma = sigma, beta = beta, k = ncat
                                  , n.cores = n.cores)
       return( -1 * lik )
     }
@@ -190,8 +184,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
   if( rate.model == "single.rate" ){
     wrapLogLik <- function(obj){
       sigma <- obj[1]
-      mu <- obj[2:length(obj)] # The last parameters are root values.
-      lik <- logLikBMSimple(lik_fn = lik_BM_list, sigma = sigma, mu = mu, n.cores = n.cores)
+      lik <- logLikBMSimple(lik_fn = lik_BM_list, sigma = sigma, n.cores = n.cores)
       return( -1 * lik )
     }
   }
@@ -204,15 +197,14 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
       ## Keep sampling starting states until the sampled state returns a viable likelihood.
       if(rate.model == "gamma"){
         init.pars <- c(sigma.mean.init
-                       , runif(1, min=beta.bounds[1], max=beta.bounds[2])
-                       , root.init)
+                       , runif(1, min=beta.bounds[1], max=beta.bounds[2]))
       }
       if(rate.model == "correlated"){
         while( TRUE ){
           init.rho <- ifelse(test=init.M, yes=0.5, no=runif(1, min=0, max=1) )
           init.pars <- c(sigma.mean.init
                          , runif(1, min=beta.bounds[1], max=beta.bounds[2])
-                         , init.rho, root.init) ## The correlation 'rho' and the root.
+                         , init.rho)
           ## When the model is correlated, then the M matrix needs to be a good matrix on the starting point.
           ## Need to keep sampling until the starting point is a valid matrix.
           cat <- qgamma((1:(ncat-1))/ncat, shape = init.pars[2], rate = init.pars[2])
@@ -227,7 +219,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
         }
       }
       if(rate.model == "single.rate"){
-        init.pars <- c(sigma.mean.init, root.init)
+        init.pars <- sigma.mean.init
       }
       ## Evaluate the log lik for the model.
       start.lik <- wrapLogLik(init.pars)
@@ -252,8 +244,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
       if( !length( init ) == 1 ) stop("Wrong number of init parameters. Length of init need to be 1. init is for the rate.")
       if( any(init < bounds[1]) | any(init > bounds[2]) ) stop("Value for init is out of bounds (defined by 'bounds').")
     }
-    ## Add the root value to the starting state of the parameters
-    init.pars <- c(init, root.init)
+    init.pars <- init
     ## Evaluate the log-lik for the model under the start parameters:
     start.lik <- wrapLogLik(init.pars)
     ## Check if it is valid.
@@ -285,7 +276,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
   } else{
     if( verbose ) print( "Starting MLE search." )  
   }
-  
+  ## Now do the local search.
   fit <- nloptr(x0=init.pars, eval_f=wrapLogLik, lb=log_lb, ub=log_ub, opts=local.opts)
 
   if( verbose ) print( "Reconstructing site-wise BM rates." )
@@ -306,26 +297,39 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, i
     M <- NA
   }
   
+  ## Get the root values to output as the solution.
+  get_root <- function(x, n, Cinv){
+    one_vec <- rep(1, times = n)
+    mu <- (one_vec %*% Cinv %*% x) / (one_vec %*% Cinv %*% one_vec)
+    return( mu )
+  }
+  Cinv <- solve( vcv.phylo(phy) )
+  n <- Ntip(phy)
+  mu_solution <- vector(mode = "numeric", length = ncol(data))
+  for( i in 1:ncol(data) ){
+    mu_solution[i] <- get_root(x = data[,i], n = n, Cinv)
+  }
+  
   ## Output from the model also depends on the type of model.
   if( rate.model == "correlated" ){
     sigma <- solution[1]
     beta <- solution[2]
     rho <- solution[3]
-    mu <- solution[4:length(solution)]
+    mu <- mu_solution
   } else if( rate.model == "gamma"){
     sigma <- solution[1]
     beta <- solution[2]
     rho <- NA
-    mu <- solution[3:length(solution)]
+    mu <- mu_solution
   } else{ # single-rate
     sigma <- solution[1]
     beta <- NA
     rho <- NA
-    mu <- solution[2:length(solution)]
+    mu <- mu_solution
   }
   
   ## Compute AIC and AICc:
-  npar <- length( solution )
+  npar <- length( solution ) + length( mu_solution )
   ntips <- length( phy$tip.label )
   loglik <- -1 * fit$objective
   ## AIC = -2 ( ln ( likelihood )) + 2 K
