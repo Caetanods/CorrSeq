@@ -340,6 +340,7 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, b
                , corr=rho, auto.matrix=M, alpha=beta, start.par=init.pars
                , recon.rates = recon_par, nlopt.global.search=global.opts
                , nlopt.local.search=local.opts, nlopt.message=fit$message
+               , nlopt.upper.bounds=log_ub, nlopt.lower.bounds=log_lb
                , search.time=total.time, rate.model=rate.model )
   ## Give a custom class so we can check for it later.
   class( out ) <- append( class( out ), "bm_seqrates")
