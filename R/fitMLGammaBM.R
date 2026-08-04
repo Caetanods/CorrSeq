@@ -328,14 +328,19 @@ fitCorrSeqBM <- function(data, phy, se = NULL, rate.model = "gamma", ncat = 4, b
   
   ## Compute AIC and AICc:
   npar <- length( solution ) + length( mu_solution )
-  ntips <- length( phy$tip.label )
+  #ntips <- length( phy$tip.label )
+  ncol <- ncol(data)
   loglik <- -1 * fit$objective
   ## AIC = -2 ( ln ( likelihood )) + 2 K
   AIC <- (-2 * loglik) + (2 * npar)
   ## AICc = -2 ( ln ( likelihood )) + 2 K * (n / ( n - K - 1))
-  AICc <- (-2 * loglik) + (2 * npar * (ntips / ( ntips - npar - 1)) )
+  #AICc <- (-2 * loglik) + (2 * npar * (ntips / ( ntips - npar - 1)) )
+  ## Sample size for nucleotide substitution models is # of sites.
+  AICc <- (-2 * loglik) + (2 * npar * (ncol / ( ncol - npar - 1)) )
+  ## Also provide BIC:
+  BIC <- (-2 * loglik) + (npar * log(ncol))
   
-  out <- list( log.lik= -1 * fit$objective, AIC = AIC, AICc = AICc
+  out <- list( log.lik= -1 * fit$objective, AIC = AIC, AICc = AICc, BIC = BIC
                , global.rate=sigma, root.values=mu
                , corr=rho, auto.matrix=M, alpha=beta, start.par=init.pars
                , recon.rates = recon_par, nlopt.global.search=global.opts
